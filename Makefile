@@ -1,4 +1,4 @@
-SRCS=	login_oath.c oath.c base32.c
+SRCS=	main.c oath.c base32.c
 PROG=	login_oath
 CFLAGS=	-Wall
 
