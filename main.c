@@ -55,6 +55,7 @@ main(int argc, char *argv[])
 	int		 otp1, otp, ret = EXIT_SUCCESS;
 	const char	*errstr, *otpauth = NULL;
 	uint64_t	 counter;
+	time_t		 remain;
 
 	if (geteuid()) {
 		if (pledge("stdio rpath wpath cpath flock", NULL) == -1)
@@ -128,14 +129,18 @@ main(int argc, char *argv[])
 			errx(1, "close db");
 		db = NULL;
 
-		if ((otp = oath(oak)) == -1)
+		if ((otp = oath(oak, &remain)) == -1)
 			errx(1, "failed to get otp");
 
 		if (cflag) {
 			if (otp1 != otp)
 				ret = EXIT_FAILURE;
-		} else if (tflag)
-			printf("%0*u\n", oak->oak_digits, otp);
+		} else if (tflag) {
+			printf("%0*u", oak->oak_digits, otp);
+			if (remain >= 0)
+				printf("\t\t%02lld seconds left", remain);
+			printf("\n");
+		}
 
 		oath_freekey(oak);
 	}

@@ -30,7 +30,7 @@
 #include "base32.h"
 
 int
-oath(struct oath_key *oak)
+oath(struct oath_key *oak, time_t *remain)
 {
 	unsigned char	 md[EVP_MAX_MD_SIZE];
 	unsigned int	 mdlen;
@@ -40,6 +40,7 @@ oath(struct oath_key *oak)
 	const EVP_MD	*evp_md;
 	int		 otp;
 	uint64_t	 c;
+	time_t		 now, r;
 
 	switch (oak->oak_hash) {
 	case OATH_HASH_DEFAULT:
@@ -67,13 +68,21 @@ oath(struct oath_key *oak)
 		return (-1);
 	}
 
+	now = time(NULL);
+
 	if (oak->oak_type == OATH_TYPE_HOTP) {
 		/* HOTP(K, C) = Truncate(HMAC-SHA-1(K, C)) */
 		c = oak->oak_counter;
+		r = -1;
 	} else {
 		/* TOTP(K, T) = HOTP(K, (time - T0) / X) */
-		c = ((uint64_t)time(NULL) - oak->oak_counter) / oak->oak_margin;
+		c = ((uint64_t)now - oak->oak_counter) / oak->oak_margin;
+		r = oak->oak_margin -
+		    (((uint64_t)now - oak->oak_counter) % oak->oak_margin);
 	}
+
+	if (remain != NULL)
+		*remain = r;
 
 	c = htobe64(c);
 	mdlen = sizeof(md);

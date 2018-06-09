@@ -79,7 +79,7 @@ login_oath_otp(const char *user, int *digits)
 
 	if ((oak = oathdb_getkey(oathdb, user)) == NULL)
 		return (-1);
-	otp = oath(oak);
+	otp = oath(oak, NULL);
 	if (digits != NULL)
 		*digits = oak->oak_digits;
 
