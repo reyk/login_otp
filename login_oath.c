@@ -15,47 +15,238 @@
  */
 
 #include <sys/stat.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <syslog.h>
 #include <string.h>
 #include <fcntl.h>
 #include <ctype.h>
 #include <grp.h>
-#include <err.h>
 
 #include "common.h"
 
-FILE *back = NULL;
+FILE		*back = NULL;
+struct oathdb	*oathdb = NULL;
 
-__dead static void	 usage(void);
+__dead void	 fatal( const char *, ...);
+char		*login_oath_challenge(const char *);
+int		 login_oath_otp(const char *, int *);
 
-__dead static void
-usage(void)
+__dead void
+fatal( const char *fmt, ...)
 {
-	fprintf(stderr, "usage: %s [-agilprt] [-c check] [-d digits]"
-	    " [-u url] [user]\n", __progname);
+	va_list ap;
+
+	if (oathdb != NULL)
+		(void)oathdb_close(oathdb);
+
+	va_start(ap, fmt);
+	vsyslog(LOG_ERR, fmt, ap);
+	va_end(ap);
+
 	exit(1);
+}
+
+char *
+login_oath_challenge(const char *user)
+{
+	char			*challenge = NULL;
+	struct oath_key		*oak;
+
+	if ((oak = oathdb_getkey(oathdb, user)) == NULL)
+		return (NULL);
+
+	if (asprintf(&challenge, "%s + password for \"%s\":",
+	    oak->oak_type == OATH_TYPE_HOTP ? "HOTP" : "TOTP",
+	    oak->oak_name) == -1)
+		challenge = NULL;
+
+	oath_freekey(oak);
+
+	return (challenge);
+}
+
+int
+login_oath_otp(const char *user, int *digits)
+{
+	struct oath_key		*oak;
+	int			 otp;
+	uint64_t		 counter;
+
+	if ((oak = oathdb_getkey(oathdb, user)) == NULL)
+		return (-1);
+	otp = oath(oak);
+	if (digits != NULL)
+		*digits = oak->oak_digits;
+
+	if (oak->oak_type == OATH_TYPE_HOTP) {
+		counter = oak->oak_counter + 1;
+		if (counter > INT64_MAX ||
+		    counter < oak->oak_counter) {
+			syslog(LOG_ERR, "HOTP counter wrapped: %s",
+			    oak->oak_name);
+			free(oak->oak_key);
+			oak->oak_key = NULL;
+		} else
+			oak->oak_counter = counter;
+		if (oathdb_setkey(oathdb, oak) == -1)
+			fatal("failed to update HOTP counter");
+		otp = -1;
+	}
+
+	oath_freekey(oak);
+
+	return (otp);
 }
 
 int
 main(int argc, char *argv[])
 {
-	int		 ch;
+	enum login_mode	 mode;
+	int		 ch, ret, lastchance = 0, count;
+	int		 dflag = 0, otp, otp1, digits;
+	char		*user = NULL, *pass = NULL;
+	char		*wheel = NULL, *class = NULL, *auth = NULL;
+	char		*challenge = NULL;
+	char		 response[BUFSIZ];
+	char		 buf[BUFSIZ];
+	struct rlimit	 rlim;
+	sigset_t	 blockset;
+	const char	*errstr;
+
+	setpriority(PRIO_PROCESS, 0, 0);
+	openlog(NULL, LOG_ODELAY, LOG_AUTH);
+
+	sigemptyset(&blockset);
+	sigaddset(&blockset, SIGINT);
+	sigaddset(&blockset, SIGQUIT);
+	sigaddset(&blockset, SIGTSTP);
+
+	rlim.rlim_cur = rlim.rlim_max = 0;
+	if (setrlimit(RLIMIT_CORE, &rlim) == -1)
+		syslog(LOG_ERR, "couldn't set core dump size to 0: %m");
 
 	if (pledge("stdio rpath wpath cpath flock", NULL) == -1)
-		err(1, "pledge");
+		fatal("pledge");
 
-	while ((ch = getopt(argc, argv, "ac:d:gilprtu:")) != -1) {
+	while ((ch = getopt(argc, argv, "ds:v:")) != -1) {
 		switch (ch) {
+		case 'd':
+			dflag = 1;
+			break;
+		case 's':
+			if (strcmp(optarg, "login") == 0)
+				mode = MODE_LOGIN;
+			else if (strcmp(optarg, "challenge") == 0)
+				mode = MODE_CHALLENGE;
+			else if (strcmp(optarg, "response") == 0)
+				mode = MODE_RESPONSE;
+			else
+				fatal("%s: invalid service", optarg);
+			break;
+		case 'v':
+			if (strncmp(optarg, "wheel=", 6) == 0)
+				wheel = optarg + 6;
+			else if (strncmp(optarg, "lastchance=", 11) == 0)
+				lastchance = (strcmp(optarg + 11, "yes") == 0);
+			break;
 		default:
-			usage();
+			fatal("usage error1");
 		}
 	}
 	argc -= optind;
 	argv += optind;
 
-	return (1);
+	if (argc > 2)
+		fatal("usage error2");
+	if (argc >= 1)
+		user = argv[0];
+	if (argc == 2)
+		class = argv[1];
+
+	if (dflag)
+		back = stdout;
+	else if ((back = fdopen(3, "r+")) == NULL)
+		fatal("reopening back channel: %m");
+
+	if ((oathdb = oathdb_open(1)) == NULL)
+		fatal("%s", OATH_DB_PATH);
+
+	/*
+	 * This is a modified version of login_passwd/login.c.
+	 */
+	switch (mode) {
+	case MODE_RESPONSE:
+		mode = MODE_LOGIN;
+		count = -1;
+		while (++count < sizeof(response) &&
+		    read(3, &response[count], 1) == 1) {
+			if (response[count] == '\0' && ++mode == MODE_RESPONSE)
+				break;
+			if (response[count] == '\0' && mode == MODE_CHALLENGE) {
+				pass = response + count + 1;
+			}
+		}
+		if (mode < MODE_RESPONSE)
+			fatal("protocol error on back channel");
+		break;
+	case MODE_LOGIN:
+		if ((challenge = login_oath_challenge(user)) == NULL)
+			fatal("could not get challenge");
+
+		pass = readpassphrase(challenge,
+		    buf, sizeof(buf), RPP_ECHO_OFF);
+		break;
+	case MODE_CHALLENGE:
+		if ((challenge = login_oath_challenge(user)) == NULL)
+			fatal("could not get challenge");
+
+		if ((auth = auth_mkvalue(challenge)) == NULL)
+			fatal("challenge auth value");
+		fprintf(back, "%s challenge %s\n", BI_VALUE, auth);
+		fprintf(back, "%s\n", BI_CHALLENGE);
+		/* fprintf(back, "%s\n", BI_AUTH); */
+		ret = 0;
+
+		goto done;
+	}
+
+	if ((otp = login_oath_otp(user, &digits)) == -1)
+		fatal("could not get otp");
+
+	ret = AUTH_FAILED;
+	if (pass == NULL || strlen(pass) < digits ||
+	    strlcpy(buf, pass, sizeof(buf)) >= sizeof(buf))
+		goto done;
+	otp1 = strtonum(buf, 0, INT_MAX, &errstr);
+	if (errstr)
+		goto done;
+
+	/* compare OTP */
+	if (otp != otp1)
+		goto done;
+
+	/* compare password */
+	ret = pwd_login(user, pass + digits, wheel, lastchance, class);
+
+	if (pass != NULL)
+		explicit_bzero(pass, strlen(pass));
+
+ done:
+	if (ret != AUTH_OK)
+		fprintf(back, "%s\n", BI_REJECT);
+
+	if (oathdb != NULL)
+		(void)oathdb_close(oathdb);
+
+	free(auth);
+	free(challenge);
+	closelog();
+
+	return (0);
 }

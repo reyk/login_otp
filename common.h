@@ -79,14 +79,14 @@ struct oath_key {
 };
 
 enum login_mode {
-	MODE_LOGIN,
-	MODE_CHALLENGE,
-	MODE_RESPONSE
+	MODE_LOGIN	= 0,
+	MODE_CHALLENGE	= 1,
+	MODE_RESPONSE	= 2
 };
 
 enum auth_ok {
-	AUTH_OK	= 0,
-	AUTH_FAILED = -1
+	AUTH_OK		= 0,
+	AUTH_FAILED	= -1
 };
 
 extern FILE *back;
