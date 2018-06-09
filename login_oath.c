@@ -110,14 +110,16 @@ main(int argc, char *argv[])
 	enum login_mode	 mode;
 	int		 ch, ret, lastchance = 0, count;
 	int		 dflag = 0, otp, otp1, digits;
-	char		*user = NULL, *pass = NULL;
+	char		*user = NULL, *pass = NULL, *autherr = NULL;
 	char		*wheel = NULL, *class = NULL, *auth = NULL;
 	char		*challenge = NULL;
-	char		 response[BUFSIZ];
 	char		 buf[BUFSIZ];
+	char		 response[BUFSIZ];
+	char		 otpbuf[BUFSIZ];
 	struct rlimit	 rlim;
 	sigset_t	 blockset;
 	const char	*errstr;
+	struct passwd	*pwd;
 
 	setpriority(PRIO_PROCESS, 0, 0);
 	openlog(NULL, LOG_ODELAY, LOG_AUTH);
@@ -130,9 +132,6 @@ main(int argc, char *argv[])
 	rlim.rlim_cur = rlim.rlim_max = 0;
 	if (setrlimit(RLIMIT_CORE, &rlim) == -1)
 		syslog(LOG_ERR, "couldn't set core dump size to 0: %m");
-
-	if (pledge("stdio rpath wpath cpath flock", NULL) == -1)
-		fatal("pledge");
 
 	while ((ch = getopt(argc, argv, "ds:v:")) != -1) {
 		switch (ch) {
@@ -168,6 +167,13 @@ main(int argc, char *argv[])
 		user = argv[0];
 	if (argc == 2)
 		class = argv[1];
+	if (user == NULL)
+		fatal("user not specified");
+
+	pwd = getpwnam_shadow(user);
+
+	if (pledge("stdio rpath wpath cpath flock tty id", NULL) == -1)
+		fatal("pledge");
 
 	if (dflag)
 		back = stdout;
@@ -220,26 +226,41 @@ main(int argc, char *argv[])
 		fatal("could not get otp");
 
 	ret = AUTH_FAILED;
-	if (pass == NULL || strlen(pass) < digits ||
-	    strlcpy(buf, pass, sizeof(buf)) >= sizeof(buf))
+	if (pass == NULL || strlen(pass) < digits || digits >= sizeof(buf) ||
+	    strlcpy(otpbuf, pass, sizeof(otpbuf)) >= sizeof(otpbuf)) {
+		autherr = "Invalid format";
 		goto done;
-	otp1 = strtonum(buf, 0, INT_MAX, &errstr);
-	if (errstr)
+	}
+	otpbuf[digits] = '\0';
+	otp1 = strtonum(otpbuf, 0, INT_MAX, &errstr);
+	if (errstr) {
+		autherr = "Invalid OTP";
 		goto done;
+	}
 
 	/* compare OTP */
-	if (otp != otp1)
+	if (otp != otp1) {
+		autherr = "OTP failed";
 		goto done;
+	}
+
+	(void)oathdb_close(oathdb);
+	oathdb = NULL;
 
 	/* compare password */
-	ret = pwd_login(user, pass + digits, wheel, lastchance, class);
+	ret = pwd_login(user, pass + digits, wheel, lastchance, class, pwd);
+	if (ret != AUTH_OK)
+		autherr = "Password failed";
 
 	if (pass != NULL)
 		explicit_bzero(pass, strlen(pass));
 
  done:
-	if (ret != AUTH_OK)
+	if (ret != AUTH_OK) {
+		fprintf(back, BI_VALUE " errormsg %s\n",
+		    auth_mkvalue(autherr));
 		fprintf(back, "%s\n", BI_REJECT);
+	}
 
 	if (oathdb != NULL)
 		(void)oathdb_close(oathdb);

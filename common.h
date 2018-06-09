@@ -118,6 +118,6 @@ int	 oathdb_putkey(struct oathdb *, char *);
 int	 oathdb_delkey(struct oathdb *, char *);
 
 /* login_passwd.c */
-int pwd_login(char *, char *, char *, int, char *);
+int pwd_login(char *, char *, char *, int, char *, struct passwd *);
 
 #endif /* _OATH_COMMON_H */
