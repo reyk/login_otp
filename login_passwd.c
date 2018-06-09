@@ -30,9 +30,8 @@
 
 int
 pwd_login(char *username, char *password, char *wheel, int lastchance,
-    char *class)
+    char *class, struct passwd *pwd)
 {
-	struct passwd *pwd;
 	size_t plen;
 	char *goodhash = NULL;
 	int passok = 0;
@@ -46,7 +45,6 @@ pwd_login(char *username, char *password, char *wheel, int lastchance,
 	if (password == NULL)
 		return (AUTH_FAILED);
 
-	pwd = getpwnam_shadow(username);
 	if (pwd)
 		goodhash = pwd->pw_passwd;
 
