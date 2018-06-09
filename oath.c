@@ -16,6 +16,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
@@ -36,19 +37,19 @@ oath_hotp(unsigned char *key, size_t keylen, uint64_t c, uint8_t digits)
 
 int
 oath_totp(unsigned char *key, size_t keylen,
-    time_t t0, time_t x, uint8_t digits, uint16_t shabits)
+    time_t t0, time_t x, uint8_t digits, enum oath_hash hash)
 {
 	uint64_t	 t;
 
 	/* TOTP(K, T) = HOTP(K, (time - T0) / X) */
 	t = ((uint64_t)time(NULL) - t0) / x;
 
-	return (oath(key, keylen, t, digits, shabits));
+	return (oath(key, keylen, t, digits, hash));
 }
 
 int
 oath(unsigned char *key, size_t keylen, uint64_t c, uint8_t digits,
-    uint16_t shabits)
+    enum oath_hash hash)
 {
 	unsigned char	 md[EVP_MAX_MD_SIZE];
 	unsigned int	 mdlen;
@@ -56,18 +57,19 @@ oath(unsigned char *key, size_t keylen, uint64_t c, uint8_t digits,
 	const EVP_MD	*evp_md;
 	int		 otp;
 
-	switch (shabits) {
-	case 160:
+	switch (hash) {
+	case OATH_HASH_DEFAULT:
+	case OATH_HASH_SHA1:
 		evp_md = EVP_sha1();
 		break;
-	case 256:
+	case OATH_HASH_SHA256:
 		evp_md = EVP_sha256();
 		break;
-	case 512:
+	case OATH_HASH_SHA512:
 		evp_md = EVP_sha512();
 		break;
 	default:
-		warnx("invalid sha%u does not exist", shabits);
+		warnx("invalid hash %u does not exist", hash);
 		return (-1);
 	}
 
@@ -93,11 +95,9 @@ oath(unsigned char *key, size_t keylen, uint64_t c, uint8_t digits,
 }
 
 int
-oath_generate_key(size_t length)
+oath_generate_key(size_t length, char *buf, size_t buflen)
 {
 	char		 key[1024];
-	char		 b32[2048];
-	size_t		 i;
 
 	if (length > sizeof(key)) {
 		warnx("key too long");
@@ -105,16 +105,10 @@ oath_generate_key(size_t length)
 	}
 
 	arc4random_buf(key, length);
-	if (base32_encode(key, length, b32, sizeof(b32)) == -1) {
+	if (base32_encode(key, length, buf, buflen) == -1) {
 		warnx("base32_encode");
 		return (-1);
 	}
-	for (i = 0; i < strlen(b32); i++) {
-		if (i && (i % 4) == 0)
-			putchar(' ');
-		putchar(tolower((int)b32[i]));
-	}
-	putchar('\n');
 
 	return (0);
 }
@@ -134,4 +128,78 @@ oath_decode_key(char *b32, unsigned char *key, size_t keylen)
 	if ((b32len = base32_decode(b32, key, keylen)) == -1)
 		return (-1);
 	return (b32len);
+}
+
+int
+oath_printkey(struct oath_key *oak, char *buf, size_t len)
+{
+	size_t		 i, j;
+
+	memset(buf, 0, len);
+	for (i = j = 0; i < strlen(oak->oak_key); i++) {
+		if (j >= len - 1)
+			return (-1);
+		if (i != 0 && (i % 4) == 0)
+			buf[j++] = ' ';
+		if (j >= len - 1)
+			return (-1);
+		buf[j++] = tolower((int)oak->oak_key[i]);
+	}
+
+	return (0);
+}
+
+int
+oath_printkeyurl(struct oath_key *oak, char **url)
+{
+	char	 	 issuer[BUFSIZ];
+	char		*alg, *opt;
+	uint64_t	 val;
+
+	/* Use domainname and fallback to hostname */
+	if (getdomainname(issuer, sizeof(issuer)) == -1 &&
+	    gethostname(issuer, sizeof(issuer)) == -1)
+		return (-1);
+
+	switch (oak->oak_hash) {
+	case OATH_HASH_DEFAULT:
+	case OATH_HASH_SHA1:
+		alg = "SHA1";
+		break;
+	case OATH_HASH_SHA256:
+		alg = "SHA256";
+		break;
+	case OATH_HASH_SHA512:
+		alg = "SHA512";
+		break;
+	}
+
+	if (oak->oak_type == OATH_TYPE_HOTP) {
+		opt = "counter";
+		val = oak->oak_counter;
+	} else {
+		opt = "period";
+		val = oak->oak_margin;
+	}
+
+	return (asprintf(url, "otpauth://"
+	    "%s/%s?secret=%s&issuer=%s&algorithm=%s&digits=%u&%s=%llu",
+	    oak->oak_type == OATH_TYPE_HOTP ? "hotp" : "totp",
+	    oak->oak_name,
+	    oak->oak_key,
+	    issuer,
+	    alg,
+	    oak->oak_digits,
+	    opt, val
+	));
+}
+
+void
+oath_freekey(struct oath_key *oak)
+{
+	if (oak == NULL)
+		return;
+	free(oak->oak_name);
+	free(oak->oak_key);
+	free(oak);
 }

@@ -1,11 +1,15 @@
-SRCS=	main.c oath.c base32.c
-PROG=	login_oath
-CFLAGS=	-Wall
+SRCS=		main.c oath.c oathdb.c base32.c
+PROG=		oath
+CFLAGS=		-Wall
 
+LINKS=		${BINDIR}/${PROG} ${BINDIR}/login_oath
 
-NOMAN=	genau
+LDADD=		-lcrypto
+DPADD=		${LIBCRYPTO}
 
-LDADD=	-lcrypto
-DPADD=	${LIBCRYPTO}	
+NOMAN=		yes
+
+BINMODE=	2555
+BINGRP=		_token
 
 .include <bsd.prog.mk>
