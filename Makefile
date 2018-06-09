@@ -4,8 +4,8 @@ CFLAGS=		-Wall
 
 LINKS=		${BINDIR}/${PROG} ${BINDIR}/login_oath
 
-LDADD=		-lcrypto
-DPADD=		${LIBCRYPTO}
+LDADD=		-lcrypto -lm
+DPADD=		${LIBCRYPTO} ${LIBM}
 
 NOMAN=		yes
 

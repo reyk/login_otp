@@ -62,16 +62,19 @@ struct oath_key {
 	char			*oak_key;
 };
 
+/* main.c */
+char	*url_encode(const char *);
+const char
+	*url_decode(char *);
+
 /* oath.c */
-int	 oath(unsigned char *, size_t keylen, uint64_t, uint8_t,
-	    enum oath_hash);
-int	 oath_totp(unsigned char *, size_t, time_t, time_t, uint8_t,
-	    enum oath_hash);
-int	 oath_hotp(unsigned char *, size_t, uint64_t, uint8_t);
-size_t	 oath_decode_key(char *, unsigned char *, size_t);
+int	 oath(struct oath_key *);
+int	 oath_decode_key(char *, unsigned char *, size_t);
 int	 oath_generate_key(size_t, char *, size_t);
 int	 oath_printkey(struct oath_key *, char *, size_t);
 int	 oath_printkeyurl(struct oath_key *, char **);
+struct oath_key
+	*oath_parsekeyurl(const char *);
 void	 oath_freekey(struct oath_key *);
 
 /* oathdb.c */

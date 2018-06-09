@@ -20,6 +20,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
+#include <math.h>
 #include <getopt.h>
 #include <err.h>
 
@@ -29,35 +30,18 @@
 #include "base32.h"
 
 int
-oath_hotp(unsigned char *key, size_t keylen, uint64_t c, uint8_t digits)
-{
-	/* HOTP(K, C) = Truncate(HMAC-SHA-1(K, C)) */
-	return (oath(key, keylen, c, digits, 160));
-}
-
-int
-oath_totp(unsigned char *key, size_t keylen,
-    time_t t0, time_t x, uint8_t digits, enum oath_hash hash)
-{
-	uint64_t	 t;
-
-	/* TOTP(K, T) = HOTP(K, (time - T0) / X) */
-	t = ((uint64_t)time(NULL) - t0) / x;
-
-	return (oath(key, keylen, t, digits, hash));
-}
-
-int
-oath(unsigned char *key, size_t keylen, uint64_t c, uint8_t digits,
-    enum oath_hash hash)
+oath(struct oath_key *oak)
 {
 	unsigned char	 md[EVP_MAX_MD_SIZE];
 	unsigned int	 mdlen;
+	unsigned char	 key[BUFSIZ];
+	int		 keylen;
 	int		 offset, bin_code;
 	const EVP_MD	*evp_md;
 	int		 otp;
+	uint64_t	 c;
 
-	switch (hash) {
+	switch (oak->oak_hash) {
 	case OATH_HASH_DEFAULT:
 	case OATH_HASH_SHA1:
 		evp_md = EVP_sha1();
@@ -69,18 +53,31 @@ oath(unsigned char *key, size_t keylen, uint64_t c, uint8_t digits,
 		evp_md = EVP_sha512();
 		break;
 	default:
-		warnx("invalid hash %u does not exist", hash);
+		warnx("invalid hash %u does not exist", oak->oak_hash);
 		return (-1);
 	}
 
-	if (digits > 9) {
+	if (oak->oak_digits > OATH_DIGITS_MAX) {
 		warnx("invalid number of digits");
 		return (-1);
 	}
 
+	if ((keylen = oath_decode_key(oak->oak_key, key, sizeof(key))) == -1) {
+		warnx("invalid key encoding");
+		return (-1);
+	}
+
+	if (oak->oak_type == OATH_TYPE_HOTP) {
+		/* HOTP(K, C) = Truncate(HMAC-SHA-1(K, C)) */
+		c = oak->oak_counter;
+	} else {
+		/* TOTP(K, T) = HOTP(K, (time - T0) / X) */
+		c = ((uint64_t)time(NULL) - oak->oak_counter) / oak->oak_margin;
+	}
+
 	c = htobe64(c);
 	mdlen = sizeof(md);
-	HMAC(evp_md, key, (int)keylen, (void *)&c, (int)sizeof(c), md, &mdlen);
+	HMAC(evp_md, key, keylen, (void *)&c, (int)sizeof(c), md, &mdlen);
 
 	offset = md[mdlen - 1] & 0xf;
 	bin_code =
@@ -89,7 +86,7 @@ oath(unsigned char *key, size_t keylen, uint64_t c, uint8_t digits,
 	    (md[offset + 2] & 0xff) << 8 |
 	    (md[offset + 3] & 0xff);
 
-	otp = (int)(bin_code % 1000000);
+	otp = (int)(bin_code % (int)pow(10, oak->oak_digits));
 
 	return (otp);
 }
@@ -113,11 +110,11 @@ oath_generate_key(size_t length, char *buf, size_t buflen)
 	return (0);
 }
 
-size_t
+int
 oath_decode_key(char *b32, unsigned char *key, size_t keylen)
 {
 	size_t		 i, j;
-	size_t		 b32len;
+	size_t		 len;
 
 	for (i = j = 0; i < strlen(b32); i++) {
 		if (b32[i] == '-' || b32[i] == ' ')
@@ -125,9 +122,9 @@ oath_decode_key(char *b32, unsigned char *key, size_t keylen)
 		b32[j++] = toupper((int)b32[i]);
 	}
 	b32[j] = '\0';
-	if ((b32len = base32_decode(b32, key, keylen)) == -1)
+	if ((len = base32_decode(b32, key, keylen)) == -1)
 		return (-1);
-	return (b32len);
+	return ((int)len);
 }
 
 int
@@ -152,14 +149,22 @@ oath_printkey(struct oath_key *oak, char *buf, size_t len)
 int
 oath_printkeyurl(struct oath_key *oak, char **url)
 {
-	char	 	 issuer[BUFSIZ];
-	char		*alg, *opt;
+	char		 issuer[BUFSIZ];
+	char		*alg, *opt, *uename = NULL, *ueissuer = NULL;
 	uint64_t	 val;
+	int		 ret;
 
 	/* Use domainname and fallback to hostname */
 	if (getdomainname(issuer, sizeof(issuer)) == -1 &&
 	    gethostname(issuer, sizeof(issuer)) == -1)
 		return (-1);
+
+	if ((uename = url_encode(oak->oak_name)) == NULL ||
+	    (ueissuer = url_encode(issuer)) == NULL) {
+		free(uename);
+		free(ueissuer);
+		return (-1);
+	}
 
 	switch (oak->oak_hash) {
 	case OATH_HASH_DEFAULT:
@@ -182,16 +187,134 @@ oath_printkeyurl(struct oath_key *oak, char **url)
 		val = oak->oak_margin;
 	}
 
-	return (asprintf(url, "otpauth://"
+	ret = asprintf(url, "otpauth://"
 	    "%s/%s?secret=%s&issuer=%s&algorithm=%s&digits=%u&%s=%llu",
 	    oak->oak_type == OATH_TYPE_HOTP ? "hotp" : "totp",
-	    oak->oak_name,
+	    uename,
 	    oak->oak_key,
-	    issuer,
+	    ueissuer,
 	    alg,
 	    oak->oak_digits,
-	    opt, val
-	));
+	    opt, val);
+
+	free(uename);
+	free(ueissuer);
+
+	return (ret);
+}
+
+struct oath_key *
+oath_parsekeyurl(const char *url)
+{
+	struct oath_key		*oak;
+	char			*v, *p, *s = NULL, *key, *val;
+	size_t			 len;
+	const char		*errstr = NULL;
+	char			 buf[BUFSIZ];
+
+	if ((oak = calloc(1, sizeof(*oak))) == NULL)
+		return (NULL);
+
+	if ((p = s = strdup(url)) == NULL)
+		goto fail;
+
+	len = strlen("otpauth://");
+	if (strncmp("otpauth://", p, len) != 0) {
+		errstr = "invalid url";
+		goto fail;
+	}
+	p += len;
+	v = p;
+
+	/* type */
+	if ((p = strchr(p, '/')) == NULL)
+		goto fail;
+	*p++ = '\0';
+
+	if (strcasecmp("totp", v) == 0)
+		oak->oak_type = OATH_TYPE_TOTP;
+	else if (strcasecmp("hotp", v) == 0)
+		oak->oak_type = OATH_TYPE_HOTP;
+	else {
+		errstr = "invalid oath type";
+		goto fail;
+	}
+	v = p;
+
+	/* name */
+	if ((p = strchr(p, '?')) == NULL)
+		goto fail;
+	*p++ = '\0';
+	if ((oak->oak_name = strdup(v)) == NULL ||
+	    url_decode(oak->oak_name) == NULL)
+		goto fail;
+	v = p;
+
+	/* parameters */
+	for (v = p; p != NULL; v = p) {
+		if ((p = strchr(p, '=')) == NULL)
+			goto fail;
+		*p++ = '\0';
+
+		key = v;
+		val = p;
+
+		if ((p = strchr(p, '&')) != NULL)
+			*p++ = '\0';
+
+		if (strcasecmp("secret", key) == 0) {
+			if ((oak->oak_key = strdup(val)) == NULL)
+				goto fail;
+			if (oath_decode_key(oak->oak_key,
+			    buf, sizeof(buf)) == -1) {
+				errstr = "base32 key decoding failed";
+				goto fail;
+			}
+		} else if (strcasecmp("issuer", key) == 0) {
+			/* not used */
+		} else if (strcasecmp("algorithm", key) == 0) {
+			if (strcasecmp("sha1", val) == 0)
+				oak->oak_hash = OATH_HASH_SHA1;
+			else if (strcasecmp("sha256", val) == 0)
+				oak->oak_hash = OATH_HASH_SHA256;
+			else if (strcasecmp("sha512", val) == 0)
+				oak->oak_hash = OATH_HASH_SHA512;
+			else {
+				errstr = "invalid hash algorithm";
+				goto fail;
+			}
+		} else if (strcasecmp("digits", key) == 0) {
+			oak->oak_digits = strtonum(val,
+			    1, OATH_DIGITS_MAX, &errstr);
+			if (errstr != NULL)
+				goto fail;
+		} else if (strcasecmp("counter", key) == 0) {
+			if (oak->oak_type != OATH_TYPE_HOTP)
+				goto fail;
+			/* XXX strtonum's maximum is signed long long */
+			oak->oak_counter = strtonum(val,
+			    -1, LLONG_MAX, &errstr);
+			if (errstr != NULL)
+				goto fail;
+		} else if (strcasecmp("period", key) == 0) {
+			if (oak->oak_type != OATH_TYPE_TOTP)
+				goto fail;
+			oak->oak_margin = strtonum(val,
+			    0, INT64_MAX, &errstr);
+			if (errstr != NULL)
+				goto fail;
+		}
+	}
+
+	return (oak);
+
+ fail:
+	if (errstr == NULL)
+		errstr = "failed to parse url";
+	warnx("%s", errstr);
+	free(s);
+	oath_freekey(oak);
+	return (NULL);
 }
 
 void

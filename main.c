@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Reyk Floeter <contact@reykfloeter.com>
+ * Copyright (c) 2014, 2018 Reyk Floeter <contact@reykfloeter.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,10 +17,12 @@
 #include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <string.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <grp.h>
 #include <err.h>
 
@@ -32,8 +34,9 @@ __dead void
 usage(void)
 {
 	extern const char *__progname;
-	fprintf(stderr, "usage: %s [-cdgilpt] [user]\n", __progname);
-	exit(1);
+	fprintf(stderr, "usage: %s [-agilprt] [-c check] [-d digits]"
+	    " [-u url] [user]\n", __progname);
+	exit(EXIT_FAILURE);
 }
 
 int
@@ -43,29 +46,43 @@ main(int argc, char *argv[])
 	struct oathdb	*db;
 	struct oath_key	*oak, oakey;
 	int		 ch;
-	int		 dflag = 0, gflag = 0, iflag = 0, lflag = 0, pflag = 0;
-	int		 cflag = 0, tflag = 0;
+	int		 digits = OATH_DIGITS;
+	int		 gflag = 0, iflag = 0, lflag = 0, pflag = 0;
+	int		 aflag = 0, cflag = 0, rflag = 0, tflag = 0;
 	char		*name = NULL, *url = NULL;
 	int		 fd, flags;
 	mode_t		 mode, omask;
 	struct group	*gr;
 	gid_t		 gid;
+	int		 otp1, otp, ret = EXIT_SUCCESS;
+	const char	*errstr, *otpauth = NULL;
+	uint64_t	 counter;
 
 	if (geteuid()) {
 		if (pledge("stdio rpath wpath cpath flock", NULL) == -1)
 			err(1, "pledge");
 	} else {
-		if (pledge("stdio rpath wpath cpath flock getpw fattr", NULL) == -1)
+		if (pledge("stdio rpath wpath cpath flock"
+		    " getpw fattr", NULL) == -1)
 			err(1, "pledge");
 	}
 
-	while ((ch = getopt(argc, argv, "cdgilpt")) != -1) {
+	while ((ch = getopt(argc, argv, "ac:d:gilprtu:")) != -1) {
 		switch (ch) {
+		case 'a':
+			aflag = 1;
+			break;
 		case 'c':
 			cflag = 1;
+
+			otp1 = strtonum(optarg, 0, INT_MAX, &errstr);
+			if (errstr != NULL)
+				err(1, "otp %s", errstr);
 			break;
 		case 'd':
-			dflag = 1;
+			digits = strtonum(optarg, 1, OATH_DIGITS_MAX, &errstr);
+			if (errstr != NULL)
+				err(1, "digits %s", errstr);
 			break;
 		case 'g':
 			gflag = 1;
@@ -74,13 +91,19 @@ main(int argc, char *argv[])
 			iflag++;
 			break;
 		case 'l':
-			lflag = 0;
+			lflag = 1;
 			break;
 		case 'p':
 			pflag = 1;
 			break;
+		case 'r':
+			rflag = 1;
+			break;
 		case 't':
 			tflag = 1;
+			break;
+		case 'u':
+			otpauth = optarg;
 			break;
 		default:
 			usage();
@@ -96,9 +119,36 @@ main(int argc, char *argv[])
 	else
 		name = getlogin();
 
+	/* check or print OTP from key */
+	if (cflag || tflag) {
+		if ((db = oathdb_open(1)) == NULL)
+			errx(1, "open db");
+
+		if ((oak = oathdb_getkey(db, name)) == NULL) {
+			warnx("key not found");
+			goto fail;
+		}
+
+		if (oathdb_close(db) != 0)
+			errx(1, "close db");
+		db = NULL;
+
+		if ((otp = oath(oak)) == -1)
+			errx(1, "failed to get otp");
+
+		if (cflag) {
+			if (otp1 != otp)
+				ret = EXIT_FAILURE;
+		} else if (tflag)
+			printf("%0*u\n", oak->oak_digits, otp);
+
+		oath_freekey(oak);
+	}
+
 	if (pflag && geteuid())
 		errx(1, "-p requires root privileges");
 
+	/* initialize database */
 	if (iflag) {
 		if (geteuid())
 			errx(1, "-i requires root privileges");
@@ -128,7 +178,8 @@ main(int argc, char *argv[])
 		close(fd);
 	}
 
-	if (dflag) {
+	/* remove key */
+	if (rflag) {
 		if ((db = oathdb_open(0)) == NULL)
 			errx(1, "open db");
 
@@ -136,13 +187,17 @@ main(int argc, char *argv[])
 		oakey.oak_name = name;
 		oakey.oak_key = NULL;
 
-		if (oathdb_setkey(db, &oakey) != 0)
-			errx(1, "set key");
+		if (oathdb_setkey(db, &oakey) != 0) {
+			warnx("set key");
+			goto fail;
+		}
 
 		if (oathdb_close(db) != 0)
 			errx(1, "close db");
+		db = NULL;
 	}
 
+	/* generate key */
 	if (gflag) {
 		if (oath_generate_key(OATH_KEYLEN, buf, sizeof(buf)) == -1)
 			errx(1, "failed to generate key");
@@ -150,29 +205,59 @@ main(int argc, char *argv[])
 		if ((db = oathdb_open(0)) == NULL)
 			errx(1, "open db");
 
-		memset(&oakey, 0, sizeof(oakey));
-		oakey.oak_name = name;
-		oakey.oak_key = buf;
+		if (otpauth == NULL) {
+			memset(&oakey, 0, sizeof(oakey));
+			oakey.oak_name = name;
+			oakey.oak_digits = digits;
+			oakey.oak_key = buf;
+			oak = &oakey;
+		} else {
+			if ((oak = oath_parsekeyurl(otpauth)) == NULL) {
+				warnx("invalid url");
+				goto fail;
+			}
+			if (geteuid() &&
+			    strcmp(oak->oak_name, name) != 0) {
+				warnx("key name does not match user");
+				goto fail;
+			}
+			if (oath_printkeyurl(oak, &url) == -1) {
+				warnx("key url");
+				goto fail;
+			}
+			printf("URL:\t%s\n", url);
+			free(url);
+		}
 
-		if (oathdb_setkey(db, &oakey) != 0)
-			errx(1, "set key");
+		if (oathdb_setkey(db, oak) != 0) {
+			warnx("set key");
+			goto fail;
+		}
+
+		if (otpauth != NULL)
+			oath_freekey(oak);
 
 		if (oathdb_close(db) != 0)
 			errx(1, "close db");
+		db = NULL;
 
 		/* A user can print own key once at initialization */
 		pflag = 1;
 	}
 
+	/* print key */
 	if (pflag) {
 		if ((db = oathdb_open(1)) == NULL)
 			errx(1, "open db");
 
-		if ((oak = oathdb_getkey(db, name)) == NULL)
-			errx(1, "key not found");
+		if ((oak = oathdb_getkey(db, name)) == NULL) {
+			warnx("key not found");
+			goto fail;
+		}
 
 		if (oathdb_close(db) != 0)
 			errx(1, "close db");
+		db = NULL;
 
 		if (oath_printkey(oak, buf, sizeof(buf)) == -1)
 			errx(1, "key");
@@ -192,5 +277,106 @@ main(int argc, char *argv[])
 		free(url);
 	}
 
-	return (0);
+	/* advance counter */
+	if (aflag) {
+		if ((db = oathdb_open(0)) == NULL)
+			errx(1, "open db");
+
+		if ((oak = oathdb_getkey(db, name)) == NULL) {
+			warnx("key not found");
+			goto fail;
+		}
+
+		if (oak->oak_type == OATH_TYPE_HOTP) {
+			counter = oak->oak_counter + 1;
+			if (counter > INT64_MAX ||
+			    counter < oak->oak_counter) {
+				warnx("counter wrapped, invalidating key");
+				free(oak->oak_key);
+				oak->oak_key = NULL;
+			} else
+				oak->oak_counter = counter;
+			if (oathdb_setkey(db, oak) == -1) {
+				warnx("key update failed");
+				goto fail;
+			}
+		} else
+			warnx("entry is not counter-based");
+
+		if (oathdb_close(db) != 0)
+			errx(1, "close db");
+	}
+
+	return (ret);
+
+ fail:
+	if (db != NULL &&
+	    oathdb_close(db) != 0)
+		errx(1, "close db");
+	return (1);
+}
+
+char *
+url_encode(const char *src)
+{
+	static char	 hex[] = "0123456789ABCDEF";
+	char		*dp, *dst;
+	unsigned char	 c;
+
+	/* We need 3 times the memory if every letter is encoded. */
+	if ((dst = calloc(3, strlen(src) + 1)) == NULL)
+		return (NULL);
+
+	for (dp = dst; *src != 0; src++) {
+		c = (unsigned char) *src;
+		if (c == ' ' || c == '#' || c == '%' || c == '?' || c == '"' ||
+		    c == '&' || c == '<' || c <= 0x1f || c >= 0x7f) {
+			*dp++ = '%';
+			*dp++ = hex[c >> 4];
+			*dp++ = hex[c & 0x0f];
+		} else
+			*dp++ = *src;
+	}
+	return (dst);
+}
+
+const char *
+url_decode(char *url)
+{
+	char		*p, *q;
+	char		 hex[3];
+	unsigned long	 x;
+
+	hex[2] = '\0';
+	p = q = url;
+
+	while (*p != '\0') {
+		switch (*p) {
+		case '%':
+			/* Encoding character is followed by two hex chars */
+			if (!(isxdigit((unsigned char)p[1]) &&
+			    isxdigit((unsigned char)p[2])))
+				return (NULL);
+
+			hex[0] = p[1];
+			hex[1] = p[2];
+
+			/*
+			 * We don't have to validate "hex" because it is
+			 * guaranteed to include two hex chars followed by nul.
+			 */
+			x = strtoul(hex, NULL, 16);
+			*q = (char)x;
+			p += 2;
+			break;
+		default:
+			*q = *p;
+			break;
+		}
+		p++;
+		q++;
+	}
+	*q = '\0';
+
+	return (url);
 }

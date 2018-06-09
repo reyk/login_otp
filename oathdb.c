@@ -191,7 +191,7 @@ oathdb_parsekey(const char *name, char *line)
 	if ((val = oathdb_nextval(&line)) == NULL)
 		return (NULL);
 
-	if (*val == ':')
+	if (*val == ':' || *val == '0')
 		created = 0;
 	else {
 		created = strtonum(val, 0, INT64_MAX, &errstr);
@@ -203,7 +203,7 @@ oathdb_parsekey(const char *name, char *line)
 	if ((val = oathdb_nextval(&line)) == NULL)
 		return (NULL);
 
-	if (*val == ':')
+	if (*val == ':' || *val == '0')
 		type = 0;
 	else {
 		type = strtonum(val, 0, OATH_TYPE_MAX, &errstr);
@@ -215,7 +215,7 @@ oathdb_parsekey(const char *name, char *line)
 	if ((val = oathdb_nextval(&line)) == NULL)
 		return (NULL);
 
-	if (*val == ':')
+	if (*val == ':' || *val == '0')
 		hash = OATH_HASH;
 	else {
 		hash = strtonum(val, 0, OATH_HASH_MAX, &errstr);
@@ -227,7 +227,7 @@ oathdb_parsekey(const char *name, char *line)
 	if ((val = oathdb_nextval(&line)) == NULL)
 		return (NULL);
 
-	if (*val == ':')
+	if (*val == ':' || *val == '0')
 		digits = OATH_DIGITS;
 	else {
 		digits = strtonum(val, 1, OATH_DIGITS_MAX, &errstr);
@@ -239,21 +239,20 @@ oathdb_parsekey(const char *name, char *line)
 	if ((val = oathdb_nextval(&line)) == NULL)
 		return (NULL);
 
-	if (*val == ':')
+	if (*val == ':' || *val == '0')
 		counter = OATH_HOTP_COUNTER;
 	else {
 		/* XXX strtonum's maximum is signed long long */
 		counter = strtonum(val, 0, LLONG_MAX, &errstr);
-		if (errstr != NULL) {
+		if (errstr != NULL)
 			return (NULL);
-		}
 	}
 
 	/* margin */
 	if ((val = oathdb_nextval(&line)) == NULL)
 		return (NULL);
 
-	if (*val == ':')
+	if (*val == ':' || *val == '0')
 		margin = OATH_TOTP_MARGIN;
 	else {
 		margin = strtonum(val, 0, INT64_MAX, &errstr);
@@ -274,6 +273,7 @@ oathdb_parsekey(const char *name, char *line)
 	oak->oak_created = created;
 	oak->oak_type = type;
 	oak->oak_hash = hash;
+	oak->oak_digits = digits;
 	oak->oak_counter = counter;
 	oak->oak_margin = margin;
 
