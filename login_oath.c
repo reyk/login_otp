@@ -61,8 +61,7 @@ login_oath_challenge(const char *user)
 	if ((oak = oathdb_getkey(oathdb, user)) == NULL)
 		return (NULL);
 
-	if (asprintf(&challenge, "%s + password for \"%s\":",
-	    oak->oak_type == OATH_TYPE_HOTP ? "HOTP" : "TOTP",
+	if (asprintf(&challenge, "OTP + password for \"%s\":",
 	    oak->oak_name) == -1)
 		challenge = NULL;
 
@@ -234,7 +233,7 @@ main(int argc, char *argv[])
 	otpbuf[digits] = '\0';
 	otp1 = strtonum(otpbuf, 0, INT_MAX, &errstr);
 	if (errstr) {
-		autherr = "Invalid OTP";
+		autherr = "OTP failed";
 		goto done;
 	}
 
