@@ -25,7 +25,7 @@
 #include <getopt.h>
 #include <err.h>
 
-#include "oath.h"
+#include "common.h"
 #include "base32.h"
 
 static int	 oathdb_sync(struct oathdb *);

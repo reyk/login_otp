@@ -26,7 +26,7 @@
 
 #include <openssl/hmac.h>
 
-#include "oath.h"
+#include "common.h"
 #include "base32.h"
 
 int

@@ -14,10 +14,26 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <limits.h>
+#include <sys/types.h>
+#include <sys/resource.h>
 
-#ifndef _OATH_H
-#define _OATH_H
+#include <limits.h>
+#include <signal.h>
+#include <syslog.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <login_cap.h>
+#include <bsd_auth.h>
+#include <stdio.h>
+#include <string.h>
+#include <pwd.h>
+#include <err.h>
+#include <util.h>
+#include <limits.h>
+#include <readpassphrase.h>
+
+#ifndef _OATH_COMMON_H
+#define _OATH_COMMON_H
 
 #define OATH_DB_PATH		"/etc/oath"
 #define OATH_GROUP		"_token"
@@ -62,7 +78,21 @@ struct oath_key {
 	char			*oak_key;
 };
 
-/* main.c */
+enum login_mode {
+	MODE_LOGIN,
+	MODE_CHALLENGE,
+	MODE_RESPONSE
+};
+
+enum auth_ok {
+	AUTH_OK	= 0,
+	AUTH_FAILED = -1
+};
+
+extern FILE *back;
+extern char *__progname;
+
+/* util.c */
 char	*url_encode(const char *);
 const char
 	*url_decode(char *);
@@ -87,4 +117,7 @@ int	 oathdb_setkey(struct oathdb *, struct oath_key *);
 int	 oathdb_putkey(struct oathdb *, char *);
 int	 oathdb_delkey(struct oathdb *, char *);
 
-#endif /* _OATH_H */
+/* login_passwd.c */
+int pwd_login(char *, char *, char *, int, char *);
+
+#endif /* _OATH_COMMON_H */

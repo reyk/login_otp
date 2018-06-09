@@ -22,21 +22,19 @@
 #include <getopt.h>
 #include <string.h>
 #include <fcntl.h>
-#include <ctype.h>
 #include <grp.h>
 #include <err.h>
 
-#include "oath.h"
+#include "common.h"
 
-__dead void	 usage(void);
+__dead static void	 usage(void);
 
-__dead void
+__dead static void
 usage(void)
 {
-	extern const char *__progname;
-	fprintf(stderr, "usage: %s [-agilprt] [-c check] [-d digits]"
+	fprintf(stderr, "usage: %s [-agiprt] [-c check] [-d digits]"
 	    " [-u url] [user]\n", __progname);
-	exit(EXIT_FAILURE);
+	exit(1);
 }
 
 int
@@ -47,7 +45,7 @@ main(int argc, char *argv[])
 	struct oath_key	*oak, oakey;
 	int		 ch;
 	int		 digits = OATH_DIGITS;
-	int		 gflag = 0, iflag = 0, lflag = 0, pflag = 0;
+	int		 gflag = 0, iflag = 0, pflag = 0;
 	int		 aflag = 0, cflag = 0, rflag = 0, tflag = 0;
 	char		*name = NULL, *url = NULL;
 	int		 fd, flags;
@@ -67,7 +65,7 @@ main(int argc, char *argv[])
 			err(1, "pledge");
 	}
 
-	while ((ch = getopt(argc, argv, "ac:d:gilprtu:")) != -1) {
+	while ((ch = getopt(argc, argv, "ac:d:giprtu:")) != -1) {
 		switch (ch) {
 		case 'a':
 			aflag = 1;
@@ -89,9 +87,6 @@ main(int argc, char *argv[])
 			break;
 		case 'i':
 			iflag++;
-			break;
-		case 'l':
-			lflag = 1;
 			break;
 		case 'p':
 			pflag = 1;
@@ -314,69 +309,4 @@ main(int argc, char *argv[])
 	    oathdb_close(db) != 0)
 		errx(1, "close db");
 	return (1);
-}
-
-char *
-url_encode(const char *src)
-{
-	static char	 hex[] = "0123456789ABCDEF";
-	char		*dp, *dst;
-	unsigned char	 c;
-
-	/* We need 3 times the memory if every letter is encoded. */
-	if ((dst = calloc(3, strlen(src) + 1)) == NULL)
-		return (NULL);
-
-	for (dp = dst; *src != 0; src++) {
-		c = (unsigned char) *src;
-		if (c == ' ' || c == '#' || c == '%' || c == '?' || c == '"' ||
-		    c == '&' || c == '<' || c <= 0x1f || c >= 0x7f) {
-			*dp++ = '%';
-			*dp++ = hex[c >> 4];
-			*dp++ = hex[c & 0x0f];
-		} else
-			*dp++ = *src;
-	}
-	return (dst);
-}
-
-const char *
-url_decode(char *url)
-{
-	char		*p, *q;
-	char		 hex[3];
-	unsigned long	 x;
-
-	hex[2] = '\0';
-	p = q = url;
-
-	while (*p != '\0') {
-		switch (*p) {
-		case '%':
-			/* Encoding character is followed by two hex chars */
-			if (!(isxdigit((unsigned char)p[1]) &&
-			    isxdigit((unsigned char)p[2])))
-				return (NULL);
-
-			hex[0] = p[1];
-			hex[1] = p[2];
-
-			/*
-			 * We don't have to validate "hex" because it is
-			 * guaranteed to include two hex chars followed by nul.
-			 */
-			x = strtoul(hex, NULL, 16);
-			*q = (char)x;
-			p += 2;
-			break;
-		default:
-			*q = *p;
-			break;
-		}
-		p++;
-		q++;
-	}
-	*q = '\0';
-
-	return (url);
 }
