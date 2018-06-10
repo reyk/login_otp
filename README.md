@@ -2,7 +2,7 @@ login_oath
 ==========
 
 OTP authentication type for OpenBSD to login with an authenticator app
-such as `Google Authenticator'.  This tool implements RFC 6238 (TOTP)
+such as _Google Authenticator_.  This tool implements RFC 6238 (TOTP)
 and RFC 4226 (HOTP).
 
 Installation
@@ -31,8 +31,8 @@ Generate new user key and install it in an authenticator app:
 	URL:    otpauth://totp/reyk?secret=QQS7EYCAYXAXL5NQI3RVXZGNE4&issuer=example.com&algorithm=SHA1&digits=6&period=30
 
 > Note that this tool does not provide a QR code, but the key can be
-> installed manually or via the otpauth:// URL (clicking it on iOS will
-> open the authenticator).  Try clicking the following link:
+> installed manually or via the `otpauth://` URL (clicking it on iOS will
+> open the authenticator).  Try the following URL:
 > [otpauth://totp/example?secret=67FGQKYRC7LE56G3XMLYWPTSW4&issuer=example.com&algorithm=SHA1&digits=8&period=30](otpauth://totp/example?secret=67FGQKYRC7LE56G3XMLYWPTSW4&issuer=example.com&algorithm=SHA1&digits=6&period=30)
 
 The oath key can also be retrieved on the local machine:
@@ -40,9 +40,9 @@ The oath key can also be retrieved on the local machine:
 	$ oath -t
 	103200          04 seconds left
 
-Configure `/etc/login.conf' and add `oath' to the auth option (run
+Configure `/etc/login.conf` and add `oath` to the auth option (run
 `cap_mkdb /etc/login.conf` afterwards).  It makes sense to replace
-`passwd' with `oath'.
+`passwd` with `oath`.
 
 	auth-defaults:auth=oath,skey:
 
@@ -55,8 +55,8 @@ Or via SSH:
 
 	$ ssh reyk:oath@myhost.example.com
 
-> Note that `reyk:oath' is only needed if `oath' is not the default,
-> otherwise just the username is sufficient, eg. `reyk'.
+> Note that `reyk:oath` is only needed if `oath` is not the default,
+> otherwise just the username is sufficient, eg. `reyk`.
 
 The default mode is TOTP (time-based OTP), HOTP (counter-based OTP) is
 also supported and can be configured using a custom URL when
@@ -67,6 +67,6 @@ generating the key:
 TODO
 ----
 
-* Write manpages.
-* LDAP?
+* Write manpages oath(1) and login_oath(8).
 * Authentication chaining?
+* LDAP?
