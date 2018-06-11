@@ -34,8 +34,8 @@ FILE		*back = NULL;
 struct oathdb	*oathdb = NULL;
 
 __dead void	 fatal( const char *, ...);
-char		*login_oath_challenge(const char *);
-int		 login_oath_otp(const char *, int *);
+char		*login_oath_challenge(const char *, struct oath_key **);
+int		 login_oath_otp(const char *, struct oath_key **);
 
 __dead void
 fatal( const char *fmt, ...)
@@ -53,7 +53,7 @@ fatal( const char *fmt, ...)
 }
 
 char *
-login_oath_challenge(const char *user)
+login_oath_challenge(const char *user, struct oath_key **oakp)
 {
 	char			*challenge = NULL;
 	struct oath_key		*oak;
@@ -65,13 +65,14 @@ login_oath_challenge(const char *user)
 	    oak->oak_name) == -1)
 		challenge = NULL;
 
-	oath_freekey(oak);
+	if (oakp != NULL)
+		*oakp = oak;
 
 	return (challenge);
 }
 
 int
-login_oath_otp(const char *user, int *digits)
+login_oath_otp(const char *user, struct oath_key **oakp)
 {
 	struct oath_key		*oak;
 	int			 otp;
@@ -80,8 +81,6 @@ login_oath_otp(const char *user, int *digits)
 	if ((oak = oathdb_getkey(oathdb, user)) == NULL)
 		return (-1);
 	otp = oath(oak, NULL);
-	if (digits != NULL)
-		*digits = oak->oak_digits;
 
 	if (oak->oak_type == OATH_TYPE_HOTP) {
 		counter = oak->oak_counter + 1;
@@ -98,7 +97,8 @@ login_oath_otp(const char *user, int *digits)
 		otp = -1;
 	}
 
-	oath_freekey(oak);
+	if (oakp != NULL)
+		*oakp = oak;
 
 	return (otp);
 }
@@ -119,6 +119,7 @@ main(int argc, char *argv[])
 	sigset_t	 blockset;
 	const char	*errstr;
 	struct passwd	*pwd;
+	struct oath_key	*oak = NULL;
 
 	setpriority(PRIO_PROCESS, 0, 0);
 	openlog(NULL, LOG_ODELAY, LOG_AUTH);
@@ -182,9 +183,7 @@ main(int argc, char *argv[])
 	if ((oathdb = oathdb_open(1)) == NULL)
 		fatal("%s", OATH_DB_PATH);
 
-	/*
-	 * This is a modified version of login_passwd/login.c.
-	 */
+	/* This is sligthly based on login_passwd/login.c. */
 	switch (mode) {
 	case MODE_RESPONSE:
 		mode = MODE_LOGIN;
@@ -201,28 +200,30 @@ main(int argc, char *argv[])
 			fatal("protocol error on back channel");
 		break;
 	case MODE_LOGIN:
-		if ((challenge = login_oath_challenge(user)) == NULL)
+		if ((challenge = login_oath_challenge(user, &oak)) == NULL)
 			fatal("could not get challenge");
 
 		pass = readpassphrase(challenge,
 		    buf, sizeof(buf), RPP_ECHO_OFF);
 		break;
 	case MODE_CHALLENGE:
-		if ((challenge = login_oath_challenge(user)) == NULL)
+		if ((challenge = login_oath_challenge(user, &oak)) == NULL)
 			fatal("could not get challenge");
 
 		if ((auth = auth_mkvalue(challenge)) == NULL)
 			fatal("challenge auth value");
 		fprintf(back, "%s challenge %s\n", BI_VALUE, auth);
 		fprintf(back, "%s\n", BI_CHALLENGE);
-		/* fprintf(back, "%s\n", BI_AUTH); */
-		ret = 0;
 
+		ret = 0;
 		goto done;
 	}
 
-	if ((otp = login_oath_otp(user, &digits)) == -1)
+	if ((otp = login_oath_otp(user, &oak)) == -1) {
+		oath_freekey(oak);
 		fatal("could not get otp");
+	}
+	digits = oak->oak_digits;
 
 	ret = AUTH_FAILED;
 	if (pass == NULL || strlen(pass) < digits || digits >= sizeof(buf) ||
@@ -251,9 +252,6 @@ main(int argc, char *argv[])
 	if (ret != AUTH_OK)
 		autherr = "Password failed";
 
-	if (pass != NULL)
-		explicit_bzero(pass, strlen(pass));
-
  done:
 	if (ret != AUTH_OK) {
 		fprintf(back, BI_VALUE " errormsg %s\n",
@@ -261,11 +259,16 @@ main(int argc, char *argv[])
 		fprintf(back, "%s\n", BI_REJECT);
 	}
 
-	if (oathdb != NULL)
-		(void)oathdb_close(oathdb);
+	/* clear passwords and keys from memeory */
+	explicit_bzero(buf, sizeof(buf));
+	explicit_bzero(response, sizeof(response));
+	explicit_bzero(otpbuf, sizeof(otpbuf));
+	oath_freekey(oak);
 
+	(void)oathdb_close(oathdb);
 	free(auth);
 	free(challenge);
+
 	closelog();
 
 	return (0);

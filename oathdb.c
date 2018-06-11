@@ -88,6 +88,8 @@ oathdb_open(int read_only)
 			/* write it to the temporary file */
 			fprintf(db->db_tmpfp, "%s\n", line);
 		}
+		if (line != NULL)
+			explicit_bzero(line, strlen(line));
 		free(line);
 	}
 
@@ -124,6 +126,9 @@ oathdb_sync(struct oathdb *db)
 			return (-1);
 		}
 	}
+	if (line != NULL)
+		explicit_bzero(line, strlen(line));
+	free(line);
 
 	return (0);
 }
@@ -315,8 +320,10 @@ oathdb_getkey(struct oathdb *db, const char *name)
 			break;
 		}
 	}
-
+	if (line != NULL)
+		explicit_bzero(line, strlen(line));
 	free(line);
+
 	return (oak);
 }
 
@@ -399,6 +406,8 @@ oathdb_setkey(struct oathdb *db, struct oath_key *oak)
 			}
 			continue;
 		}
+
+		explicit_bzero(line2, strlen(line2));
 		free(line2);
 
 		/* remove duplicate or line if no new key was given */
@@ -421,6 +430,10 @@ oathdb_setkey(struct oathdb *db, struct oath_key *oak)
 
 	ret = 0;
  done:
+	if (line != NULL)
+		explicit_bzero(line, strlen(line));
+	if (keyline != NULL)
+		explicit_bzero(keyline, strlen(keyline));
 	free(line);
 	free(keyline);
 

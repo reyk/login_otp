@@ -97,6 +97,8 @@ oath(struct oath_key *oak, time_t *remain)
 
 	otp = (int)(bin_code % (int)pow(10, oak->oak_digits));
 
+	explicit_bzero(key, sizeof(key));
+
 	return (otp);
 }
 
@@ -315,14 +317,21 @@ oath_parsekeyurl(const char *url)
 		}
 	}
 
+	explicit_bzero(s, strlen(s));
+	free(s);
+
 	return (oak);
 
  fail:
 	if (errstr == NULL)
 		errstr = "failed to parse url";
 	warnx("%s", errstr);
+
+	if (s != NULL)
+		explicit_bzero(s, strlen(s));
 	free(s);
 	oath_freekey(oak);
+
 	return (NULL);
 }
 
@@ -331,6 +340,8 @@ oath_freekey(struct oath_key *oak)
 {
 	if (oak == NULL)
 		return;
+	if (oak->oak_key != NULL)
+		explicit_bzero(oak->oak_key, strlen(oak->oak_key));
 	free(oak->oak_name);
 	free(oak->oak_key);
 	free(oak);

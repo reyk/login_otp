@@ -42,18 +42,18 @@ main(int argc, char *argv[])
 {
 	char		 buf[BUFSIZ];
 	struct oathdb	*db;
-	struct oath_key	*oak, oakey;
+	struct oath_key	*oak = NULL, oakey;
 	int		 ch;
 	int		 digits = OATH_DIGITS;
 	int		 gflag = 0, iflag = 0, pflag = 0;
 	int		 aflag = 0, cflag = 0, rflag = 0, tflag = 0;
-	char		*name = NULL, *url = NULL;
+	char		*name = NULL, *url = NULL, *otpauth = NULL;
 	int		 fd, flags;
 	mode_t		 mode, omask;
 	struct group	*gr;
 	gid_t		 gid;
-	int		 otp1, otp, ret = EXIT_SUCCESS;
-	const char	*errstr, *otpauth = NULL;
+	int		 otp1, otp, ret = -1;
+	const char	*errstr;
 	uint64_t	 counter;
 	time_t		 remain;
 
@@ -125,12 +125,16 @@ main(int argc, char *argv[])
 			goto fail;
 		}
 
-		if (oathdb_close(db) != 0)
-			errx(1, "close db");
+		if (oathdb_close(db) != 0) {
+			warnx("close db");
+			goto fail;
+		}
 		db = NULL;
 
-		if ((otp = oath(oak, &remain)) == -1)
-			errx(1, "failed to get otp");
+		if ((otp = oath(oak, &remain)) == -1) {
+			warnx("failed to get otp");
+			goto fail;
+		}
 
 		if (cflag) {
 			if (otp1 != otp)
@@ -143,6 +147,7 @@ main(int argc, char *argv[])
 		}
 
 		oath_freekey(oak);
+		oak = NULL;
 	}
 
 	if (pflag && geteuid())
@@ -202,8 +207,10 @@ main(int argc, char *argv[])
 		if (oath_generate_key(OATH_KEYLEN, buf, sizeof(buf)) == -1)
 			errx(1, "failed to generate key");
 
-		if ((db = oathdb_open(0)) == NULL)
-			errx(1, "open db");
+		if ((db = oathdb_open(0)) == NULL) {
+			warnx("open db");
+			goto fail;
+		}
 
 		if (otpauth == NULL) {
 			memset(&oakey, 0, sizeof(oakey));
@@ -221,12 +228,6 @@ main(int argc, char *argv[])
 				warnx("key name does not match user");
 				goto fail;
 			}
-			if (oath_printkeyurl(oak, &url) == -1) {
-				warnx("key url");
-				goto fail;
-			}
-			printf("URL:\t%s\n", url);
-			free(url);
 		}
 
 		if (oathdb_setkey(db, oak) != 0) {
@@ -234,8 +235,13 @@ main(int argc, char *argv[])
 			goto fail;
 		}
 
-		if (otpauth != NULL)
+		if (otpauth != NULL) {
+			explicit_bzero(otpauth, strlen(otpauth));
+			otpauth = NULL;
 			oath_freekey(oak);
+			oak = NULL;
+		}
+		explicit_bzero(buf, sizeof(buf));
 
 		if (oathdb_close(db) != 0)
 			errx(1, "close db");
@@ -255,15 +261,19 @@ main(int argc, char *argv[])
 			goto fail;
 		}
 
-		if (oathdb_close(db) != 0)
-			errx(1, "close db");
+		if (oathdb_close(db) != 0) {
+			warnx("close db");
+			goto fail;
+		}
 		db = NULL;
 
-		if (oath_printkey(oak, buf, sizeof(buf)) == -1)
-			errx(1, "key");
-		if (oath_printkeyurl(oak, &url) == -1)
-			errx(1, "key url");
+		if (oath_printkey(oak, buf, sizeof(buf)) == -1 ||
+		    oath_printkeyurl(oak, &url) == -1) {
+			warnx("print key");
+			goto fail;
+		}
 		oath_freekey(oak);
+		oak = NULL;
 
 		if (geteuid()) {
 			printf("!!! WARNING: "
@@ -274,6 +284,9 @@ main(int argc, char *argv[])
 		printf("Name:\t%s\n", name);
 		printf("Key:\t%s\n", buf);
 		printf("URL:\t%s\n", url);
+
+		explicit_bzero(buf, sizeof(buf));
+		explicit_bzero(url, strlen(url));
 		free(url);
 	}
 
@@ -305,13 +318,19 @@ main(int argc, char *argv[])
 
 		if (oathdb_close(db) != 0)
 			errx(1, "close db");
+		db = NULL;
 	}
 
-	return (ret);
-
+	if (ret == -1)
+		ret = EXIT_SUCCESS;
  fail:
+	explicit_bzero(buf, sizeof(buf));
+	if (otpauth != NULL)
+		explicit_bzero(otpauth, strlen(otpauth));
+	if (oak != NULL && oak != &oakey)
+		oath_freekey(oak);
 	if (db != NULL &&
 	    oathdb_close(db) != 0)
 		errx(1, "close db");
-	return (1);
+	return (ret);
 }
