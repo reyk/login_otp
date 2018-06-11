@@ -108,7 +108,7 @@ main(int argc, char *argv[])
 {
 	enum login_mode	 mode;
 	int		 ch, ret, lastchance = 0, count;
-	int		 dflag = 0, otp, otp1, digits;
+	int		 dflag = 0, otp, otp1, digits, enforce_type;
 	char		*user = NULL, *pass = NULL, *autherr = NULL;
 	char		*wheel = NULL, *class = NULL, *auth = NULL;
 	char		*challenge = NULL;
@@ -132,6 +132,15 @@ main(int argc, char *argv[])
 	rlim.rlim_cur = rlim.rlim_max = 0;
 	if (setrlimit(RLIMIT_CORE, &rlim) == -1)
 		syslog(LOG_ERR, "couldn't set core dump size to 0: %m");
+
+	if (strcmp(__progname, "totp") == 0)
+		enforce_type = OATH_TYPE_TOTP;
+	else if (strcmp(__progname, "hotp") == 0)
+		enforce_type = OATH_TYPE_HOTP;
+	else {
+		/* login_oath: allow any type as configured in the database */
+		enforce_type = -1;
+	}
 
 	while ((ch = getopt(argc, argv, "ds:v:")) != -1) {
 		switch (ch) {
@@ -223,14 +232,21 @@ main(int argc, char *argv[])
 		oath_freekey(oak);
 		fatal("could not get otp");
 	}
-	digits = oak->oak_digits;
-
 	ret = AUTH_FAILED;
+
+	digits = oak->oak_digits;
 	if (pass == NULL || strlen(pass) < digits || digits >= sizeof(buf) ||
 	    strlcpy(otpbuf, pass, sizeof(otpbuf)) >= sizeof(otpbuf)) {
 		autherr = "Invalid format";
 		goto done;
 	}
+
+	/* compare OATH type (HOTP or TOTP), if enforced */
+	if (enforce_type != -1 && oak->oak_type != enforce_type) {
+		autherr = "OTP failed";
+		goto done;
+	}
+
 	otpbuf[digits] = '\0';
 	otp1 = strtonum(otpbuf, 0, INT_MAX, &errstr);
 	if (errstr) {
