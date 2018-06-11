@@ -222,7 +222,8 @@ main(int argc, char *argv[])
 	 * Open the database.  It can be opened in read-only mode if the TOTP
 	 * type is enforced and we don't have to update the counter.
 	 */
-	if ((oathdb = oathdb_open(enforce_type == OATH_TYPE_TOTP ? 1 : 0)) == NULL)
+	if ((oathdb = oathdb_open(enforce_type ==
+	    OATH_TYPE_TOTP ? 1 : 0)) == NULL)
 		fatal("%s", OATH_DB_PATH);
 
 	/* This is sligthly based on login_passwd/login.c. */
