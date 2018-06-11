@@ -12,6 +12,13 @@ Installation
 	$ make all
 	$ doas make install
 
+This installs the following binaries:
+
+* `/usr/bin/oath`: to generate keys, control the oath database, etc.
+* `/usr/libexec/auth/login_oath`: the main login program for TOTP or HOTP.
+* `/usr/libexec/auth/login_totp`: hardlink that only accepts TOTP.
+* `/usr/libexec/auth/login_hotp`: hardlink that only accepts HOTP.
+
 Usage
 -----
 
@@ -41,8 +48,8 @@ The oath key can also be retrieved on the local machine:
 	103200          04 seconds left
 
 Configure `/etc/login.conf` and add `oath` to the auth option (run
-`cap_mkdb /etc/login.conf` afterwards).  It makes sense to replace
-`passwd` with `oath`.
+`cap_mkdb /etc/login.conf` afterwards, use `totp` or `hotp` to enforce
+an OATH type).  It makes sense to replace `passwd` with `oath`.
 
 	auth-defaults:auth=oath,skey:
 
@@ -63,6 +70,9 @@ also supported and can be configured using a custom URL when
 generating the key:
 
 	$ oath -g -u 'otpauth://hotp/reyk?secret=QQS7EYCAYXAXL5NQI3RVXZGNE4&issuer=example.com&algorithm=SHA1&digits=8&counter=0'
+
+The HOTP counter is only incremented after successful logins or when
+specifying the `-a` advance flag on the command line.
 
 TODO
 ----
