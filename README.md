@@ -8,6 +8,9 @@ and RFC 4226 (HOTP).
 Installation
 ------------
 
+This program only depends on libc, libutil, and libcrypto in OpenBSD's
+base system.  No external library is needed.
+
 	$ make obj
 	$ make all
 	$ doas make install

@@ -1,8 +1,8 @@
 SRCS+=		oath.c oathdb.c base32.c util.c
 CFLAGS+=	-Wall
 
-LDADD+=		-lcrypto -lm
-DPADD+=		${LIBCRYPTO} ${LIBM}
+LDADD+=		-lcrypto
+DPADD+=		${LIBCRYPTO}
 
 NOMAN=		yes
 

@@ -20,7 +20,6 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
-#include <math.h>
 #include <getopt.h>
 #include <err.h>
 
@@ -39,6 +38,7 @@ oath(struct oath_key *oak, time_t *remain)
 	int		 offset, bin_code;
 	const EVP_MD	*evp_md;
 	int		 otp;
+	int		 i, m;
 	uint64_t	 c;
 	time_t		 now, r;
 
@@ -95,7 +95,11 @@ oath(struct oath_key *oak, time_t *remain)
 	    (md[offset + 2] & 0xff) << 8 |
 	    (md[offset + 3] & 0xff);
 
-	otp = (int)(bin_code % (int)pow(10, oak->oak_digits));
+	/* simple pow(10, x) without depending on libm */
+	for (i = 0, m = 1; i < oak->oak_digits; i++)
+		m *= 10;
+
+	otp = (int)(bin_code % m);
 
 	explicit_bzero(key, sizeof(key));
 
