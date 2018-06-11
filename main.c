@@ -54,7 +54,6 @@ main(int argc, char *argv[])
 	gid_t		 gid;
 	int		 otp1, otp, ret = -1;
 	const char	*errstr;
-	uint64_t	 counter;
 	time_t		 remain;
 
 	if (geteuid()) {
@@ -301,14 +300,8 @@ main(int argc, char *argv[])
 		}
 
 		if (oak->oak_type == OATH_TYPE_HOTP) {
-			counter = oak->oak_counter + 1;
-			if (counter > INT64_MAX ||
-			    counter < oak->oak_counter) {
+			if (oath_advance_counter(oak) == -1)
 				warnx("counter wrapped, invalidating key");
-				free(oak->oak_key);
-				oak->oak_key = NULL;
-			} else
-				oak->oak_counter = counter;
 			if (oathdb_setkey(db, oak) == -1) {
 				warnx("key update failed");
 				goto fail;

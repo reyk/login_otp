@@ -103,6 +103,27 @@ oath(struct oath_key *oak, time_t *remain)
 }
 
 int
+oath_advance_counter(struct oath_key *oak)
+{
+	uint64_t	 counter;
+
+	if (oak->oak_type == OATH_TYPE_HOTP) {
+		counter = oak->oak_counter + 1;
+		if (counter > INT64_MAX ||
+		    counter < oak->oak_counter) {
+			/*  HOTP counter wrapped; delete key */
+			explicit_bzero(oak->oak_key, strlen(oak->oak_key));
+			free(oak->oak_key);
+			oak->oak_key = NULL;
+			return (-1);
+		} else
+			oak->oak_counter = counter;
+	}
+
+	return (0);
+}
+
+int
 oath_generate_key(size_t length, char *buf, size_t buflen)
 {
 	char		 key[1024];

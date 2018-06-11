@@ -99,6 +99,7 @@ const char
 
 /* oath.c */
 int	 oath(struct oath_key *, time_t *);
+int	 oath_advance_counter(struct oath_key *);
 int	 oath_decode_key(char *, unsigned char *, size_t);
 int	 oath_generate_key(size_t, char *, size_t);
 int	 oath_printkey(struct oath_key *, char *, size_t);

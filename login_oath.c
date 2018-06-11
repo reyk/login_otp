@@ -36,6 +36,7 @@ struct oathdb	*oathdb = NULL;
 __dead void	 fatal( const char *, ...);
 char		*login_oath_challenge(const char *, struct oath_key **);
 int		 login_oath_otp(const char *, struct oath_key **);
+int		 login_oath_advance(const char *, struct oath_key **);
 
 __dead void
 fatal( const char *fmt, ...)
@@ -58,15 +59,14 @@ login_oath_challenge(const char *user, struct oath_key **oakp)
 	char			*challenge = NULL;
 	struct oath_key		*oak;
 
-	if ((oak = oathdb_getkey(oathdb, user)) == NULL)
+	if (*oakp == NULL && (oak = *oakp = oathdb_getkey(oathdb, user)) == NULL)
 		return (NULL);
+	else
+		oak = *oakp;
 
 	if (asprintf(&challenge, "OTP + password for \"%s\":",
 	    oak->oak_name) == -1)
 		challenge = NULL;
-
-	if (oakp != NULL)
-		*oakp = oak;
 
 	return (challenge);
 }
@@ -75,32 +75,34 @@ int
 login_oath_otp(const char *user, struct oath_key **oakp)
 {
 	struct oath_key		*oak;
-	int			 otp;
-	uint64_t		 counter;
 
-	if ((oak = oathdb_getkey(oathdb, user)) == NULL)
+	if (*oakp == NULL && (oak = *oakp = oathdb_getkey(oathdb, user)) == NULL)
 		return (-1);
-	otp = oath(oak, NULL);
+	else
+		oak = *oakp;
 
-	if (oak->oak_type == OATH_TYPE_HOTP) {
-		counter = oak->oak_counter + 1;
-		if (counter > INT64_MAX ||
-		    counter < oak->oak_counter) {
-			syslog(LOG_ERR, "HOTP counter wrapped: %s",
-			    oak->oak_name);
-			free(oak->oak_key);
-			oak->oak_key = NULL;
-		} else
-			oak->oak_counter = counter;
-		if (oathdb_setkey(oathdb, oak) == -1)
-			fatal("failed to update HOTP counter");
-		otp = -1;
-	}
+	return (oath(oak, NULL));
+}
 
-	if (oakp != NULL)
-		*oakp = oak;
+int
+login_oath_advance(const char *user, struct oath_key **oakp)
+{
+	struct oath_key		*oak;
 
-	return (otp);
+	if (*oakp == NULL && (oak = *oakp = oathdb_getkey(oathdb, user)) == NULL)
+		return (-1);
+	else
+		oak = *oakp;
+
+	if (oak->oak_type != OATH_TYPE_HOTP)
+		return (0);
+
+	if (oath_advance_counter(oak) == -1)
+		syslog(LOG_ERR, "HOTP counter wrapped: %s", oak->oak_name);
+	if (oathdb_setkey(oathdb, oak) == -1)
+		fatal("failed to update HOTP counter");
+
+	return (0);
 }
 
 int
@@ -130,8 +132,10 @@ main(int argc, char *argv[])
 	sigaddset(&blockset, SIGTSTP);
 
 	rlim.rlim_cur = rlim.rlim_max = 0;
+#ifndef DEBUG
 	if (setrlimit(RLIMIT_CORE, &rlim) == -1)
 		syslog(LOG_ERR, "couldn't set core dump size to 0: %m");
+#endif
 
 	if (strcmp(__progname, "totp") == 0)
 		enforce_type = OATH_TYPE_TOTP;
@@ -189,7 +193,11 @@ main(int argc, char *argv[])
 	else if ((back = fdopen(3, "r+")) == NULL)
 		fatal("reopening back channel: %m");
 
-	if ((oathdb = oathdb_open(1)) == NULL)
+	/*
+	 * Open the database.  It can be opened in read-only mode if the TOTP
+	 * type is enforced and we don't have to update the counter.
+	 */
+	if ((oathdb = oathdb_open(enforce_type == OATH_TYPE_TOTP ? 1 : 0)) == NULL)
 		fatal("%s", OATH_DB_PATH);
 
 	/* This is sligthly based on login_passwd/login.c. */
@@ -241,24 +249,28 @@ main(int argc, char *argv[])
 		goto done;
 	}
 
+	/*
+	 * Don't expose any details about the error, we just differentiate
+	 * between input format, OTP and password.
+	 */
+	autherr = "OTP failed";
+
 	/* compare OATH type (HOTP or TOTP), if enforced */
-	if (enforce_type != -1 && oak->oak_type != enforce_type) {
-		autherr = "OTP failed";
+	if (enforce_type != -1 && oak->oak_type != enforce_type)
 		goto done;
-	}
 
 	otpbuf[digits] = '\0';
 	otp1 = strtonum(otpbuf, 0, INT_MAX, &errstr);
-	if (errstr) {
-		autherr = "OTP failed";
+	if (errstr)
 		goto done;
-	}
 
 	/* compare OTP */
-	if (otp != otp1) {
-		autherr = "OTP failed";
+	if (otp != otp1)
 		goto done;
-	}
+
+	/* advance counter on success (HOTP only) */
+	if ((otp = login_oath_advance(user, &oak)) == -1)
+		goto done;
 
 	(void)oathdb_close(oathdb);
 	oathdb = NULL;
