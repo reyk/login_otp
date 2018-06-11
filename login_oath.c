@@ -30,13 +30,15 @@
 
 #include "common.h"
 
-FILE		*back = NULL;
-struct oathdb	*oathdb = NULL;
+FILE			*back = NULL;
+static struct oathdb	*oathdb = NULL;
+static sigset_t		 blockset;
 
 __dead void	 fatal( const char *, ...);
 char		*login_oath_challenge(const char *, struct oath_key **);
 int		 login_oath_otp(const char *, struct oath_key **);
 int		 login_oath_advance(const char *, struct oath_key **);
+void		 login_blocksig(int);
 
 __dead void
 fatal( const char *fmt, ...)
@@ -59,10 +61,15 @@ login_oath_challenge(const char *user, struct oath_key **oakp)
 	char			*challenge = NULL;
 	struct oath_key		*oak;
 
-	if (*oakp == NULL && (oak = *oakp = oathdb_getkey(oathdb, user)) == NULL)
-		return (NULL);
+	login_blocksig(SIG_BLOCK);
+	if (*oakp == NULL)
+		oak = *oakp = oathdb_getkey(oathdb, user);
 	else
 		oak = *oakp;
+	login_blocksig(SIG_UNBLOCK);
+
+	if (oak == NULL)
+		return (NULL);
 
 	if (asprintf(&challenge, "OTP + password for \"%s\":",
 	    oak->oak_name) == -1)
@@ -76,10 +83,15 @@ login_oath_otp(const char *user, struct oath_key **oakp)
 {
 	struct oath_key		*oak;
 
-	if (*oakp == NULL && (oak = *oakp = oathdb_getkey(oathdb, user)) == NULL)
-		return (-1);
+	login_blocksig(SIG_BLOCK);
+	if (*oakp == NULL)
+		oak = *oakp = oathdb_getkey(oathdb, user);
 	else
 		oak = *oakp;
+	login_blocksig(SIG_UNBLOCK);
+
+	if (oak == NULL)
+		return (-1);
 
 	return (oath(oak, NULL));
 }
@@ -89,20 +101,34 @@ login_oath_advance(const char *user, struct oath_key **oakp)
 {
 	struct oath_key		*oak;
 
-	if (*oakp == NULL && (oak = *oakp = oathdb_getkey(oathdb, user)) == NULL)
-		return (-1);
+	login_blocksig(SIG_BLOCK);
+	if (*oakp == NULL)
+		oak = *oakp = oathdb_getkey(oathdb, user);
 	else
 		oak = *oakp;
+	login_blocksig(SIG_UNBLOCK);
+
+	if (oak == NULL)
+		return (-1);
 
 	if (oak->oak_type != OATH_TYPE_HOTP)
 		return (0);
 
+	login_blocksig(SIG_BLOCK);
 	if (oath_advance_counter(oak) == -1)
 		syslog(LOG_ERR, "HOTP counter wrapped: %s", oak->oak_name);
 	if (oathdb_setkey(oathdb, oak) == -1)
 		fatal("failed to update HOTP counter");
+	login_blocksig(SIG_UNBLOCK);
 
 	return (0);
+}
+
+void
+login_blocksig(int how)
+{
+	/* This is used to block or unblock signals during database access */
+	(void)sigprocmask(how, &blockset, NULL);
 }
 
 int
@@ -118,7 +144,6 @@ main(int argc, char *argv[])
 	char		 response[BUFSIZ];
 	char		 otpbuf[BUFSIZ];
 	struct rlimit	 rlim;
-	sigset_t	 blockset;
 	const char	*errstr;
 	struct passwd	*pwd;
 	struct oath_key	*oak = NULL;
@@ -272,7 +297,10 @@ main(int argc, char *argv[])
 	if ((otp = login_oath_advance(user, &oak)) == -1)
 		goto done;
 
+	login_blocksig(SIG_BLOCK);
 	(void)oathdb_close(oathdb);
+	login_blocksig(SIG_UNBLOCK);
+
 	oathdb = NULL;
 
 	/* compare password */
@@ -287,13 +315,18 @@ main(int argc, char *argv[])
 		fprintf(back, "%s\n", BI_REJECT);
 	}
 
+	if (oathdb != NULL) {
+		login_blocksig(SIG_BLOCK);
+		(void)oathdb_close(oathdb);
+		login_blocksig(SIG_UNBLOCK);
+	}
+
 	/* clear passwords and keys from memeory */
 	explicit_bzero(buf, sizeof(buf));
 	explicit_bzero(response, sizeof(response));
 	explicit_bzero(otpbuf, sizeof(otpbuf));
 	oath_freekey(oak);
 
-	(void)oathdb_close(oathdb);
 	free(auth);
 	free(challenge);
 
