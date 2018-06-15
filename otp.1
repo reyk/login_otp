@@ -1,0 +1,224 @@
+.\"	$OpenBSD: mdoc.template,v 1.15 2014/03/31 00:09:54 dlg Exp $
+.\
+.\" Copyright (c) 2018 Reyk Floeter <contact@reykfloeter.com>"
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate$
+.Dt OTP 1
+.Os
+.Sh NAME
+.Nm otp
+.Nd manage OATH-compatible one-time password authentication
+.Sh SYNOPSIS
+.Nm otp
+.Op Fl agiprt
+.Op Fl c Ar otp
+.Op Fl d Ar digits
+.Op Fl u Ar url
+.Op Ar user
+.Sh DESCRIPTION
+The
+.Nm
+utility configures the user's one-time password (OTP) authentication.
+If no
+.Ar user
+is specified,
+the user's login name is used.
+.Pp
+The
+.Nm
+is compatible to the standards that have been specified by the
+Initiative for Open Authentication (OATH):
+either the HMAC-Based One-Time Password Algorithm (HOTP, RFC 4226) or
+the Time-Based One-Time Password Algorithm (TOTP, RFC 6238).
+.Pp
+.Pp
+This utility is typically used in combination with an OATH-compatible
+external authenticator, like a token, hardware dongle, or
+authenticator mobile app, such as the
+.Dq Goole Authenticator .
+.Pp
+The options are as follows:
+.Bl -tag -width ussurl
+.It Fl a
+Advance the HOTP counter.
+.It Fl c Ar otp
+Check the specified
+.Ar otp
+value. 
+.It Fl d Ar digits
+Specify the number of digits that are used for generated OTPs.
+Used in combination with the
+.Fl g
+option.
+.It Fl g
+Generate and print a new OTP secret key for the user.
+The default mode is TOTP but can be overridden with the settings of the
+.Fl u Ar url
+option.
+.It Fl i
+Initialize the OTP database
+.Pa /etc/otp .
+This command requires root privileges.
+.It Fl p
+Print a users OTP secret key.
+This command requires root privileges;
+a user will only see the secret key once when generating it.
+.It Fl r
+Remove the OTP secret key from the database.
+.It Fl t
+Print a valid OTP token.
+If the OTP type is HOTP, the counter is not incremented automatically;
+use the
+.Fl a
+option to do so.
+.It Fl u Ar url
+Specifiy an OTP URL when generating or importing a new OTP secret key.
+The OTP URL has the following format:
+.Pp
+.Sm off
+otpauth://
+.Op hotp | totp
+/
+.Ar user
+.Oo ?
+.Op secret= Ar BASE32-ENCODED-KEY
+.Op issuer= Ar name
+.Op algorithm= SHA1 | SHA256 | SHA512
+.Op digits= Ar 6
+.Op perioid= Ar 30
+.Oc
+.Sm on
+.El
+.Sh FILES
+.Bl -tag -width "/etc/login.conf" -compact
+.It Pa /etc/login.conf
+login configuration options
+.It Pa /etc/otp
+OTP secret key database
+.El
+.Sh EXIT STATUS
+The
+.Nm
+utility returns 0 on success, and 1 if an error occurs.
+.Pp
+If the
+.Fl c
+option is specified, the
+.Nm
+utility returns 1 if the checked OTP is not valid. 
+.Sh EXAMPLES
+Create the OTP database:
+.Bd -literal -offset indent
+$ doas otp -i
+.Ed
+.Pp
+Generate new user key and install it in an authenticator app:
+.Bd -literal -offset indent
+$ otp -g
+!!! WARNING: PLEASE KEEP THE FOLLOWING KEY SECRET !!!
+
+Load the following key or URL in the authenticator:
+
+Name:   reyk
+Key:    qqs7 eyca yxax l5nq i3rv xzgn e4
+URL:    otpauth://totp/reyk?secret=QQS7EYCAYXAXL5NQI3RVXZGNE4&issuer=example.com&algorithm=SHA1&digits=6&period=30
+.Ed
+.Pp
+The otp key can also be retrieved on the local machine:
+.Bd -literal -offset indent
+$ otp -t
+103200          04 seconds left
+.Ed
+.Pp
+Configure
+.Pa /etc/login.conf
+and add
+.Sq otp
+to the auth option (run
+.Sq cap_mkdb /etc/login.conf
+afterwards, use
+.Sq totp
+or
+.Sq hotp
+to enforce
+an OATH type).
+It makes sense to replace
+.Sq passwd
+with
+.Sq otp :
+.Bd -literal -offset indent
+auth-defaults:auth=otp,skey:
+.Ed
+.Pp
+Login using the concatenated OTP code and password, for example:
+.Bd -literal -offset indent
+login: reyk:otp
+OTP + password for "reyk":123456password
+.Ed
+.Pp
+Or via SSH:
+.Bd -literal -offset indent
+$ ssh reyk:otp@myhost.example.com
+.Ed
+.Pp
+Note that the
+.Sq reyk:otp
+is only needed if
+.Sq otp
+is not the default, otherwise just the username is sufficient, eg.
+.Sq reyk .
+.Pp
+The default mode is TOTP (time-based OTP), HOTP (counter-based OTP) is
+also supported and can be configured using a custom URL when
+generating the key:
+.Bd -literal -offset indent
+$ otp -g -u 'otpauth://hotp/reyk?secret=QQS7EYCAYXAXL5NQI3RVXZGNE4&issuer=example.com&algorithm=SHA1&digits=8&counter=0'
+.Ed
+.Pp
+The HOTP counter is only incremented after successful logins or when
+specifying the `-a` advance flag on the command line.
+.Sh SEE ALSO
+.Xr doas 1 ,
+.Xr login.conf 5 ,
+.Xr login_otp 8
+.Sh STANDARDS
+.Rs
+.%A D. M'Raihi
+.%A M. Bellare
+.%A F. Hoornaert
+.%A D. Naccache
+.%A O. Ranen
+.%D December 2005
+.%R RFC 4226
+.%T HOTP: An HMAC-Based One-Time Password Algorithm
+.Re
+.Pp
+.Rs
+.%A D. M'Raihi
+.%A S. Machani
+.%A M. Pei
+.%A J. Rydell
+.%D May 2011
+.%R RFC 6238
+.%T TOTP: Time-Based One-Time Password Algorithm
+.Re
+.Pp
+.Sh AUTHORS
+.An -nosplit
+The
+.Nm
+program was written by
+.An Reyk Floeter Aq Mt contact@reykfloeter.com .
+
