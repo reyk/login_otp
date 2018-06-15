@@ -1,3 +1,3 @@
-SUBDIR=	oath login_oath
+SUBDIR=	otp login_otp
 
 .include <bsd.subdir.mk>

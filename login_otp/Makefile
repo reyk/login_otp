@@ -1,7 +1,7 @@
 .PATH:		${.CURDIR}/..
 
-PROG=		login_oath
-SRCS=		login_oath.c login_passwd.c
+PROG=		login_otp
+SRCS=		login_otp.c login_passwd.c
 
 LDADD=		-lutil
 DPADD=		${LIBUTIL}

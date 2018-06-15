@@ -1,4 +1,4 @@
-SRCS+=		oath.c oathdb.c base32.c util.c
+SRCS+=		otp.c otpdb.c base32.c util.c
 CFLAGS+=	-Wall
 
 LDADD+=		-lcrypto

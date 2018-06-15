@@ -1,6 +1,6 @@
 .PATH:		${.CURDIR}/..
 
-PROG=		oath
+PROG=		otp
 SRCS=		main.c
 
 BINDIR=		/usr/bin
