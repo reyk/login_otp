@@ -98,7 +98,7 @@ and password
 The user obtains a valid OTP from an OATH-compatible external authenticator,
 typically a token, hardware dongle, or authenticator mobile app,
 such as the
-"Goole Authenticator".
+"Google Authenticator".
 
 # SEE ALSO
 
