@@ -167,7 +167,7 @@ main(int argc, char *argv[])
 	else if (strcmp(__progname, "hotp") == 0)
 		enforce_type = OATH_TYPE_HOTP;
 	else {
-		/* login_oath: allow any type as configured in the database */
+		/* allow any type as configured in the database */
 		enforce_type = -1;
 	}
 

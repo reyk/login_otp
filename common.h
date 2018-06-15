@@ -35,7 +35,7 @@
 #ifndef _OATH_COMMON_H
 #define _OATH_COMMON_H
 
-#define OATH_DB_PATH		"/etc/oath"
+#define OATH_DB_PATH		"/etc/otp"
 #define OATH_GROUP		"_token"
 #define OATH_KEYLEN		16
 

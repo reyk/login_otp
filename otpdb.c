@@ -69,7 +69,7 @@ oathdb_open(int read_only)
 	db->db_fp = fp;
 
 	if (!read_only) {
-		strlcpy(db->db_tmp, "/tmp/oath-XXXXXXXXXX",
+		strlcpy(db->db_tmp, "/tmp/otp-XXXXXXXXXX",
 		    sizeof(db->db_tmp));
 		if ((fd = mkstemp(db->db_tmp)) == -1) {
 			warn("mkstemp");
@@ -149,7 +149,7 @@ oathdb_close(struct oathdb *db)
 	if (db->db_tmpfp != NULL)
 		fclose(db->db_tmpfp);
 
-	if (strncmp("/tmp/oath", db->db_tmp, strlen("/tmp/oath")) == 0)
+	if (strncmp("/tmp/otp", db->db_tmp, strlen("/tmp/otp")) == 0)
 		unlink(db->db_tmp);
 
 	free(db);
