@@ -2,6 +2,7 @@
 
 PROG=		login_otp
 SRCS=		login_otp.c login_passwd.c
+MAN=		login_otp.8
 
 LDADD=		-lutil
 DPADD=		${LIBUTIL}
