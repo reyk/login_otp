@@ -61,7 +61,7 @@ main(int argc, char *argv[])
 			err(1, "pledge");
 	} else {
 		if (pledge("stdio rpath wpath cpath flock"
-		    " getpw fattr", NULL) == -1)
+		    " getpw fattr chown", NULL) == -1)
 			err(1, "pledge");
 	}
 
