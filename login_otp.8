@@ -21,7 +21,10 @@
 .Sh NAME
 .Nm login_otp ,
 .Nm login_hotp ,
-.Nm login_totp
+.Nm login_totp ,
+.Nm login_otp_only ,
+.Nm login_hotp_only ,
+.Nm login_totp_only
 .Nd provide OATH-compatible one-time password authentication types
 .Sh SYNOPSIS
 .Nm login_otp
@@ -57,7 +60,14 @@ utility can be called as
 or
 .Nm login_totp
 to either allow HOTP or TOTP passwords,
-or to enforce HTOP or TOTP passwords accordingly.
+or to enforce HTOP or TOTP passwords accordingly,
+or as
+.Nm login_otp_only ,
+.Nm login_hotp_only ,
+or
+.Nm login_totp
+to only require the HOTP or TOTP password without being combined with
+the user's system password.
 .Pp
 The
 .Ar user
@@ -88,7 +98,7 @@ This is used by
 .Pp
 If the
 .Cm lastchance
-argument is8 specified and is equal to
+argument is specified and is equal to
 .Cm yes ,
 then if the user's password has expired, and it has not been
 expired longer than
@@ -108,6 +118,17 @@ and password
 .Bd -literal -offset indent
 login: user
 OTP + password for "user":123456test-123
+.Ed
+.Pp
+When invoked as
+.Nm login_otp_only ,
+.Nm login_hotp_only ,
+or
+.Nm login_totp_only ,
+only the OTP password is required:
+.Bd -literal -offset indent
+login: user
+OTP for "user":123456
 .Ed
 .Pp
 The user obtains a valid OTP from an OATH-compatible external authenticator,

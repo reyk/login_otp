@@ -21,6 +21,9 @@ This installs the following binaries:
 * `/usr/libexec/auth/login_otp`: the main login program for TOTP or HOTP.
 * `/usr/libexec/auth/login_totp`: hardlink that only accepts TOTP.
 * `/usr/libexec/auth/login_hotp`: hardlink that only accepts HOTP.
+* `/usr/libexec/auth/login_otp_only`: hardlink that only requires TOTP or HOTP without the user's system password.
+* `/usr/libexec/auth/login_totp_only`: hardlink that only requires TOTP without the user's system password.
+* `/usr/libexec/auth/login_hotp_only`: hardlink that only requires HOTP without the user's system password.
 
 Usage
 -----

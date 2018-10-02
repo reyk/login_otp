@@ -35,7 +35,7 @@ static struct oathdb	*oathdb = NULL;
 static sigset_t		 blockset;
 
 __dead void	 fatal( const char *, ...);
-char		*login_oath_challenge(const char *, struct oath_key **);
+char		*login_oath_challenge(const char *, struct oath_key **, int);
 int		 login_oath_otp(const char *, struct oath_key **);
 int		 login_oath_advance(const char *, struct oath_key **);
 void		 login_blocksig(int);
@@ -56,7 +56,7 @@ fatal( const char *fmt, ...)
 }
 
 char *
-login_oath_challenge(const char *user, struct oath_key **oakp)
+login_oath_challenge(const char *user, struct oath_key **oakp, int otponly)
 {
 	char			*challenge = NULL;
 	struct oath_key		*oak;
@@ -71,8 +71,8 @@ login_oath_challenge(const char *user, struct oath_key **oakp)
 	if (oak == NULL)
 		return (NULL);
 
-	if (asprintf(&challenge, "OTP + password for \"%s\":",
-	    oak->oak_name) == -1)
+	if (asprintf(&challenge, "OTP%s for \"%s\":",
+	    (otponly ? "" : "+ password"), oak->oak_name) == -1)
 		challenge = NULL;
 
 	return (challenge);
@@ -137,6 +137,7 @@ main(int argc, char *argv[])
 	enum login_mode	 mode;
 	int		 ch, ret, lastchance = 0, count;
 	int		 dflag = 0, otp, otp1, digits, enforce_type;
+	int		 otponly = 0;
 	char		*user = NULL, *pass = NULL, *autherr = NULL;
 	char		*wheel = NULL, *class = NULL, *auth = NULL;
 	char		*challenge = NULL;
@@ -162,14 +163,17 @@ main(int argc, char *argv[])
 		syslog(LOG_ERR, "couldn't set core dump size to 0: %m");
 #endif
 
-	if (strcmp(__progname, "totp") == 0)
+	if (strstr(__progname, "totp") != NULL)
 		enforce_type = OATH_TYPE_TOTP;
-	else if (strcmp(__progname, "hotp") == 0)
+	else if (strstr(__progname, "hotp") != NULL)
 		enforce_type = OATH_TYPE_HOTP;
 	else {
 		/* allow any type as configured in the database */
 		enforce_type = -1;
 	}
+
+	if (strstr(__progname, "_only") != NULL)
+		otponly = 1;
 
 	while ((ch = getopt(argc, argv, "ds:v:")) != -1) {
 		switch (ch) {
@@ -243,14 +247,16 @@ main(int argc, char *argv[])
 			fatal("protocol error on back channel");
 		break;
 	case MODE_LOGIN:
-		if ((challenge = login_oath_challenge(user, &oak)) == NULL)
+		if ((challenge = login_oath_challenge(user, &oak,
+		    otponly)) == NULL)
 			fatal("could not get challenge");
 
 		pass = readpassphrase(challenge,
 		    buf, sizeof(buf), RPP_ECHO_OFF);
 		break;
 	case MODE_CHALLENGE:
-		if ((challenge = login_oath_challenge(user, &oak)) == NULL)
+		if ((challenge = login_oath_challenge(user, &oak,
+		    otponly)) == NULL)
 			fatal("could not get challenge");
 
 		if ((auth = auth_mkvalue(challenge)) == NULL)
@@ -304,10 +310,16 @@ main(int argc, char *argv[])
 
 	oathdb = NULL;
 
-	/* compare password */
-	ret = pwd_login(user, pass + digits, wheel, lastchance, class, pwd);
-	if (ret != AUTH_OK)
-		autherr = "Password failed";
+	if (otponly) {
+		ret = AUTH_OK;
+		fprintf(back, BI_AUTH "\n");
+	} else {
+		/* compare password */
+		ret = pwd_login(user, pass + digits, wheel, lastchance, class,
+		    pwd);
+		if (ret != AUTH_OK)
+			autherr = "Password failed";
+	}
 
  done:
 	if (ret != AUTH_OK) {
