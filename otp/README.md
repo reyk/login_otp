@@ -87,10 +87,10 @@ The options are as follows:
 
 **-u** *url*
 
-> Specifiy an OTP URL when generating or importing a new OTP secret key.
+> Specify an OTP URL when generating or importing a new OTP secret key.
 > The OTP URL has the following format:
 
-> otpauth://\[hotp|totp]/*user*\[?\[secret=*BASE32-ENCODED-KEY*]\[&issuer=*name*]\[&algorithm=SHA1|SHA256|SHA512]\[&digits=*6*]\[&perioid=*30*]]
+> otpauth://\[hotp|totp]/*user*\[?\[secret=*BASE32-ENCODED-KEY*]\[&issuer=*name*]\[&algorithm=SHA1|SHA256|SHA512]\[&digits=*6*]\[&period=*30*]]
 
 # FILES
 
