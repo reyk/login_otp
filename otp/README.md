@@ -33,7 +33,7 @@ the Time-Based One-Time Password Algorithm (TOTP, RFC 6238).
 This utility is typically used in combination with an OATH-compatible
 external authenticator, like a token, hardware dongle, or
 authenticator mobile app, such as the
-"Goole Authenticator".
+"Google Authenticator".
 
 The options are as follows:
 
@@ -212,4 +212,4 @@ The
 program was written by
 Reyk Floeter &lt;[contact@reykfloeter.com](mailto:contact@reykfloeter.com)&gt;.
 
-OpenBSD 6.3 - June 15, 2018
+OpenBSD 6.5 - May 29, 2019

@@ -4,7 +4,10 @@ LOGIN\_OTP(8) - System Manager's Manual
 
 **login\_otp**,
 **login\_hotp**,
-**login\_totp** - provide OATH-compatible one-time password authentication types
+**login\_totp**,
+**login\_otp\_only**,
+**login\_hotp\_only**,
+**login\_totp\_only** - provide OATH-compatible one-time password authentication types
 
 # SYNOPSIS
 
@@ -43,7 +46,14 @@ utility can be called as
 or
 **login\_totp**
 to either allow HOTP or TOTP passwords,
-or to enforce HTOP or TOTP passwords accordingly.
+or to enforce HTOP or TOTP passwords accordingly,
+or as
+**login\_otp\_only**,
+**login\_hotp\_only**,
+or
+**login\_totp**
+to only require the HOTP or TOTP password without being combined with
+the user's system password.
 
 The
 *user*
@@ -74,7 +84,7 @@ su(1).
 
 If the
 **lastchance**
-argument is8 specified and is equal to
+argument is specified and is equal to
 **yes**,
 then if the user's password has expired, and it has not been
 expired longer than
@@ -95,6 +105,16 @@ and password
 	login: user
 	OTP + password for "user":123456test-123
 
+When invoked as
+**login\_otp\_only**,
+**login\_hotp\_only**,
+or
+**login\_totp\_only**,
+only the OTP password is required:
+
+	login: user
+	OTP for "user":123456
+
 The user obtains a valid OTP from an OATH-compatible external authenticator,
 typically a token, hardware dongle, or authenticator mobile app,
 such as the
@@ -103,8 +123,8 @@ such as the
 # SEE ALSO
 
 login(1),
-passwd(1),
 otp(1),
+passwd(1),
 su(1),
 login.conf(5),
 ftpd(8)
@@ -135,4 +155,4 @@ The
 program was written by
 Reyk Floeter &lt;[contact@reykfloeter.com](mailto:contact@reykfloeter.com)&gt;.
 
-OpenBSD 6.3 - June 15, 2018
+OpenBSD 6.5 - November 24, 2018
