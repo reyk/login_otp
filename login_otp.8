@@ -1,4 +1,3 @@
-.\" $OpenBSD: login_passwd.8,v 1.10 2015/09/11 21:19:34 schwarze Exp $
 .\"
 .\" Copyright (c) 2018 Reyk Floeter <contact@reykfloeter.com>
 .\" Copyright (c) 2000 Todd C. Miller <Todd.Miller@courtesan.com>
@@ -135,6 +134,12 @@ The user obtains a valid OTP from an OATH-compatible external authenticator,
 typically a token, hardware dongle, or authenticator mobile app,
 such as the
 .Dq Google Authenticator .
+.Pp
+As documented in
+.Xr login.conf 5 ,
+local authentication styles and program names should start with a dash (-):
+.Em login_-otp, login_-totp, login_-hotp, login_-otp_only, login_-totp_only,
+.Em login_-hotp_only, -otp .
 .Sh SEE ALSO
 .Xr login 1 ,
 .Xr otp 1 ,
