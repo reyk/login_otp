@@ -1,5 +1,4 @@
-.\"	$OpenBSD: mdoc.template,v 1.15 2014/03/31 00:09:54 dlg Exp $
-.\
+.\"
 .\" Copyright (c) 2018 Reyk Floeter <contact@reykfloeter.com>"
 .\"
 .\" Permission to use, copy, modify, and distribute this software for any
@@ -43,7 +42,6 @@ Initiative for Open Authentication (OATH):
 either the HMAC-Based One-Time Password Algorithm (HOTP, RFC 4226) or
 the Time-Based One-Time Password Algorithm (TOTP, RFC 6238).
 .Pp
-.Pp
 This utility is typically used in combination with an OATH-compatible
 external authenticator, like a token, hardware dongle, or
 authenticator mobile app, such as the
@@ -56,7 +54,7 @@ Advance the HOTP counter.
 .It Fl c Ar otp
 Check the specified
 .Ar otp
-value. 
+value.
 .It Fl d Ar digits
 Specify the number of digits that are used for generated OTPs.
 Used in combination with the
@@ -117,7 +115,7 @@ If the
 .Fl c
 option is specified, the
 .Nm
-utility returns 1 if the checked OTP is not valid. 
+utility returns 1 if the checked OTP is not valid.
 .Sh EXAMPLES
 Create the OTP database:
 .Bd -literal -offset indent
@@ -159,24 +157,24 @@ It makes sense to replace
 with
 .Sq otp :
 .Bd -literal -offset indent
-auth-defaults:auth=otp,skey:
+auth-defaults:auth=-otp,skey:
 .Ed
 .Pp
 Login using the concatenated OTP code and password, for example:
 .Bd -literal -offset indent
-login: reyk:otp
+login: reyk:-otp
 OTP + password for "reyk":123456password
 .Ed
 .Pp
 Or via SSH:
 .Bd -literal -offset indent
-$ ssh reyk:otp@myhost.example.com
+$ ssh reyk:-otp@myhost.example.com
 .Ed
 .Pp
 Note that the
-.Sq reyk:otp
+.Sq reyk:-otp
 is only needed if
-.Sq otp
+.Sq -otp
 is not the default, otherwise just the username is sufficient, eg.
 .Sq reyk .
 .Pp
@@ -214,11 +212,9 @@ specifying the `-a` advance flag on the command line.
 .%R RFC 6238
 .%T TOTP: Time-Based One-Time Password Algorithm
 .Re
-.Pp
 .Sh AUTHORS
 .An -nosplit
 The
 .Nm
 program was written by
 .An Reyk Floeter Aq Mt contact@reykfloeter.com .
-
